@@ -1,5 +1,6 @@
-# Quarto starts R from report/, so the root .Rprofile is not read.
-# Activate the project's renv library explicitly.
+# R reads the .Rprofile of the directory Quarto is launched from. When the
+# report is rendered from report/ (e.g. from an IDE), activate the project's
+# renv library from the root.
 local({
   owd <- setwd("..")
   on.exit(setwd(owd))
