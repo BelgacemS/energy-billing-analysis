@@ -40,3 +40,19 @@ scripts/   analysis steps, called by run_all.R
 outputs/   generated tables, figures and results (not versioned)
 report/    report source
 ```
+
+## Workflow
+
+Each step of `PLAN.md` is done on its own branch, created from an up-to-date `main`:
+
+```
+git switch main
+git pull
+git switch -c step-2-load
+```
+
+When the step's check passes (tests green, criterion of the plan met), push the branch and open a pull request to `main`. The other member reviews it before merging. The step's box in `PLAN.md` is ticked in that pull request. Nobody commits directly to `main`.
+
+Only one person changes `renv.lock` at a time, in the same commit as the code that needs the new packages. After pulling a change to `renv.lock`, run `Rscript -e 'renv::restore()'`.
+
+Line endings are normalised to LF by `.gitattributes`, so files edited on Windows do not show spurious changes.
