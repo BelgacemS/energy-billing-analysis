@@ -1,0 +1,27 @@
+---
+title: "Facturation énergétique des sites mobiles"
+subtitle: "Contrôle des factures et prévision de la consommation"
+lang: fr
+format:
+  typst:
+    papersize: a4
+    fig-format: png
+    fig-dpi: 300
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
+```{r}
+#| include: false
+source("R/config.R")
+res <- readRDS(file.path(config$results_dir, "skeleton.rds"))
+```
+
+Le fichier analysé contient `r format(res$n_rows, big.mark = " ")` factures.

@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# renv (installed packages are restored from renv.lock)
+renv/library/
+renv/local/
+renv/staging/
+
+# Generated outputs
+outputs/
+report/*.pdf
+report/*_files/
+.quarto/
+
+# Secrets
+.env
+.Renviron
+
+# Subject documents
+sujet*.pdf

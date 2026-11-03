@@ -1,0 +1,4 @@
+# Same line endings on every OS (the project is edited on macOS and Windows)
+* text=auto eol=lf
+*.pdf binary
+*.png binary
