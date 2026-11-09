@@ -83,7 +83,7 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
 
 ### Statistiques descriptives
 
-- [ ] **Étape 3 : statistiques descriptives et enseignements**
+- [x] **Étape 3 : statistiques descriptives et enseignements**
   - Objectif : décrire niveaux, dispersion, tendance et saisonnalité. Établir aussi les constats qui justifient les choix : poids des 2 gros sites (environ 80 % des kWh), effet calendrier contre saison réelle, profil du mois commun ou non (globalement, par suffixe), reproductibilité de l'effet propre à chaque site d'une année sur l'autre, part des sites avec un changement de niveau, précision de la naïve brute contre la naïve par jour.
   - Contenu : distribution des niveaux médians (2 gros sites à part), profil mensuel brut contre par jour, dispersion des effets du mois entre sites, croissance 2019 à 2021 par site, carte de chaleur site × mois de l'écart au niveau du site, comparaison des trois suffixes.
   - Fichiers : `scripts/01_descriptive.R`, `R/features.R`, sorties dans `outputs/figures/`, `outputs/tables/`, `outputs/results/`.
