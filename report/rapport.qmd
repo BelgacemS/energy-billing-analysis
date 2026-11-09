@@ -21,7 +21,59 @@ knitr::opts_knit$set(root.dir = normalizePath(".."))
 ```{r}
 #| include: false
 source("R/config.R")
-res <- readRDS(file.path(config$results_dir, "skeleton.rds"))
+source("R/load.R")
+res <- readRDS(file.path(config$results_dir, "baseline.rds"))
+num <- function(x, digits = 0) {
+  format(round(x, digits), big.mark = " ", decimal.mark = ",", nsmall = digits, trim = TRUE)
+}
+fr_date <- function(d) format(d, "%d/%m/%Y")
+fr_month <- function(d) format(d, "%m/%Y")
 ```
 
-Le fichier analysé contient `r format(res$n_rows, big.mark = " ")` factures.
+Le fichier analysé contient `r num(res$n_rows)` factures de `r res$n_sites` sites.
+
+# Q1 : factures à vérifier (première version)
+
+## Contrôles de cohérence
+
+```{r}
+gaps <- res$coverage[res$coverage$type == "gap", ]
+overlaps <- res$coverage[res$coverage$type == "overlap", ]
+```
+
+`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire. Périodes sans facturation : `r if (nrow(gaps) == 0) "aucune" else paste0(nrow(gaps), " (", paste(paste(gaps$site, ":", gaps$days, ifelse(gaps$days > 1, "jours", "jour")), collapse = " ; "), ")")`. Périodes facturées deux fois : `r if (nrow(overlaps) == 0) "aucune" else nrow(overlaps)`. Factures de montant nul ou négatif : `r res$n_values`. Sites ayant deux factures pour le même mois : `r res$n_duplicates`.
+
+```{r}
+p <- res$periods
+knitr::kable(
+  data.frame(Site = p$site, Mois = fr_month(p$month),
+             `Début` = fr_date(p$begin), Fin = fr_date(p$end),
+             `Jours facturés` = p$billed_days, `Jours du mois` = p$month_days,
+             kWh = num(p$kwh), check.names = FALSE),
+  align = "llllrrr")
+```
+
+`r res$repeats$observed` factures reprennent exactement le montant du mois précédent, sur `r res$repeats$n_sites` sites. Par hasard, on en attend environ `r num(res$repeats$expected, 1)` (nombre moyen d'écarts d'un mois à l'autre égaux à une petite valeur donnée). La probabilité d'en observer au moins autant par hasard est de `r num(res$repeats$p_value, 2)` : `r if (res$repeats$p_value < 0.05) "ces répétitions sont plus fréquentes que le hasard et méritent une vérification" else "ces répétitions ne suffisent pas à conclure à une facturation estimée"`.
+
+## Écarts au niveau local du site (filtre de Hampel)
+
+Chaque facture, ramenée au jour, est comparée à la médiane des `r res$hampel_half_width` mois qui la précèdent et des `r res$hampel_half_width` qui la suivent. Elle est signalée si l'écart dépasse `r res$hampel_threshold` fois la dispersion de cette fenêtre, sans descendre sous le bruit habituel du site. `r nrow(res$hampel_flags)` factures sont signalées, sur `r res$n_hampel_sites` sites, classées par écart en kWh. Pour les `r res$hampel_half_width` premiers et les `r res$hampel_half_width` derniers mois, la fenêtre est tronquée : `r res$n_hampel_edge` des alertes tombent dans ces mois, où la méthode est moins fiable.
+
+```{r}
+h <- res$hampel_flags
+knitr::kable(
+  data.frame(Site = h$site, Mois = fr_month(h$month), `kWh facturés` = num(h$kwh),
+             `kWh attendus` = num(h$expected_kwh), `Écart kWh` = num(h$gap_kwh),
+             Sens = ifelse(h$direction == "over", "sur", "sous"), check.names = FALSE),
+  align = "llrrrl")
+```
+
+# Q2 : prévision de décembre 2021 (première version)
+
+Prévision naïve : consommation par jour du dernier mois facturé, multipliée par les `r days_in_month(config$forecast_month)` jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
+
+```{r}
+f <- res$forecast
+knitr::kable(data.frame(Site = f$site, `kWh prévus` = num(f$kwh), check.names = FALSE),
+             align = "lr")
+```

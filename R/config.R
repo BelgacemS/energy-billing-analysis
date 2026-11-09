@@ -18,5 +18,15 @@ config <- list(
 
   # First month of the test period of the backtest (June to November 2021).
   # Forecast accuracy figures computed before step 11 stop the month before.
-  test_start = as.Date("2021-06-01")
+  test_start = as.Date("2021-06-01"),
+
+  # Baseline (step 4).
+  # Identical bills two months in a row are compared with the mean count of
+  # changes equal to k kWh, k in +-1..+-repeat_k_max.
+  repeat_k_max = 10,
+  # Hampel filter: window of 3 months on each side, flag beyond 3 robust
+  # standard deviations (the usual default values).
+  hampel_half_width = 3,
+  hampel_threshold  = 3,
+  forecast_month    = as.Date("2021-12-01")
 )
