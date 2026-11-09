@@ -63,7 +63,7 @@ rows <- data.frame(
                 sprintf("Pic isolé de %d fois le bruit, fausse rupture", spk),
                 sprintf("Paire compensée de %d fois le bruit, fausse rupture", spk),
                 sprintf("Paire compensée de %d fois le bruit, 3 mois signalés", spk),
-                sprintf("Rupture de %d fois le bruit, trouvée au bon mois", stp)),
+                sprintf("Rupture de %d fois le bruit, seule et au bon mois", stp)),
   sc = c("constant", "spike", "pair", "pair", "step"),
   sz = c(0, spk, spk, spk, stp),
   col = c("any_break", "any_break", "any_break", "anomaly_flagged", "break_at_step")
@@ -85,9 +85,14 @@ exc89 <- p89[p89$excursion & p89$month < b89$month + 31, ]
 p1911 <- site_rows("1911BB")
 b1911 <- site_break("1911BB")
 ramp1911 <- p1911[p1911$excursion & abs(as.numeric(p1911$month - b1911$month)) < 62, ]
+small1911 <- pan$breaks[pan$breaks$site == "1911BB" & pan$breaks$month < b1911$month, ]
 b1088 <- site_break("1088KO")
+p1088 <- site_rows("1088KO")
+ramp1088 <- p1088[p1088$excursion & p1088$month >= b1088$month &
+                    p1088$month < seq(b1088$month, by = "month", length.out = 4)[4], ]
+n_word <- c("un", "deux", "trois")
 n_small_breaks <- sum(abs(pan$breaks$change[!pan$breaks$big]) <= config$level_shift_min)
-top_br <- head(pan$break_months, 2)
+top_br <- pan$break_months[pan$break_months >= pan$break_months[2]]  # ties kept
 agree <- pan$agreement
 ```
 
@@ -97,7 +102,7 @@ L'effet du mois est commun aux `r pan$n_small` sites ordinaires, pour les raison
 
 Les paliers sont trouvés par segmentation : la série corrigée de l'effet du mois est découpée en périodes de niveau constant d'au moins `r pan$config$plateau_min_months` mois, et un nouveau palier n'est créé que si l'amélioration de l'ajustement dépasse une pénalité fixe. Les écarts sont mesurés en unités du bruit habituel du site, c'est-à-dire sa variation typique d'un mois sur l'autre, qui va de `r pct(pan$sigma_range[1], 1)` à `r pct(pan$sigma_range[2], 1)` selon les sites (médiane `r pct(pan$sigma_median, 1)`). La difficulté est qu'une facture erronée ne doit ni créer un palier ni en déplacer un. La segmentation utilisée est donc robuste aux valeurs aberrantes (Fearnhead et Rigaill, 2019) : dans le calcul de l'ajustement, l'écart d'une facture à son palier compte normalement jusqu'à `r K` fois le bruit, et ne compte pas davantage au-delà. Une facture très haute, une sous-facturation suivie de son rattrapage ou un ou deux mois de transition pèsent ainsi au plus autant qu'un écart de `r K` fois le bruit, ce qui ne suffit pas à justifier un nouveau palier. Le découpage optimal est calculé exactement. Le niveau d'un palier est la moyenne de ses mois proches, et une facture à plus de `r K` fois le bruit de son palier est dite hors palier.
 
-Cette méthode a été comparée à la segmentation classique, qui suppose un bruit gaussien, et à une variante non paramétrique (Haynes et al., 2017), sur `r pan$config$synthetic_reps` séries simulées de `r pan$n_months` mois par situation (@tbl-synthetic). La paire compensée, deux mois sous-facturés puis un rattrapage du double, est le cas qui les départage. La segmentation gaussienne en fait un faux palier presque à chaque fois, la variante non paramétrique trouve une fausse rupture dans plus d'un quart des séries quelle que soit la situation, et la version robuste reste au niveau de fausses alertes d'une série constante. Les trois trouvent aussi bien une rupture nette. Les résultats vont dans le même sens avec un bruit à queues épaisses. La version robuste est retenue.
+Cette méthode a été comparée à la segmentation classique, qui suppose un bruit gaussien, et à une variante non paramétrique (Haynes et al., 2017), sur `r pan$config$synthetic_reps` séries simulées de `r pan$n_months` mois par situation (@tbl-synthetic). La paire compensée, deux mois sous-facturés puis un rattrapage du double, est le cas qui les départage. La segmentation gaussienne en fait un faux palier presque à chaque fois, la variante non paramétrique trouve une fausse rupture dans plus d'un quart des séries quelle que soit la situation, et la version robuste reste à peu près au niveau de fausses alertes d'une série constante. Les trois trouvent aussi bien une rupture nette. Les résultats vont dans le même sens avec un bruit à queues épaisses. La version robuste est retenue.
 
 ```{r}
 #| label: tbl-synthetic
@@ -113,7 +118,7 @@ knitr::kable(syn_tab, align = "lrrr")
 fig("panel_examples")
 ```
 
-La @fig-panel-examples montre la méthode sur quatre sites. 1240BR passe sur un nouveau palier en `r mname(b1240$month)` (`r pct(b1240$change, signed = TRUE)`) : c'est une rupture durable, pas un écart ponctuel. Chez 0089KO, la facture `r de(exc89$month[1])` (`r num(exc89$kwh[1])` kWh) et celle `r de(exc89$month[2])` (`r num(exc89$kwh[2])` kWh) sont hors palier, puis le site passe sur un niveau `r pct(b89$change)` plus haut. La rupture est datée `r de(b89$month)` : quand un rattrapage précède immédiatement un vrai changement de niveau, la méthode ne peut pas dire à quelle période il appartient. 1911BB garde son niveau jusqu'au début de sa montée, puis passe sur un palier `r pct(b1911$change)` plus haut à partir `r de(b1911$month)`. Les factures de la montée (`r paste(sapply(ramp1911$month, mname), collapse = " et ")`) sont hors palier, au lieu de former un palier fictif comme avec la segmentation gaussienne. 1088KO change de niveau en `r mname(b1088$month)` (`r pct(b1088$change, signed = TRUE)`), et ses deux mois de montée restent sous le nouveau palier.
+La @fig-panel-examples montre la méthode sur quatre sites. 1240BR passe sur un nouveau palier en `r mname(b1240$month)` (`r pct(b1240$change, signed = TRUE)`) : c'est une rupture durable, pas un écart ponctuel. Chez 0089KO, la facture `r de(exc89$month[1])` (`r num(exc89$kwh[1])` kWh) et celle `r de(exc89$month[2])` (`r num(exc89$kwh[2])` kWh) sont hors palier, puis le site passe sur un niveau `r pct(b89$change)` plus haut. La rupture est datée `r de(b89$month)` : quand un rattrapage précède immédiatement un vrai changement de niveau, la méthode ne peut pas dire à quelle période il appartient. 1911BB garde son niveau, à `r pct(max(abs(small1911$change)), 1)` près, jusqu'au début de sa montée, puis passe sur un palier `r pct(b1911$change)` plus haut à partir `r de(b1911$month)`. Les factures de la montée (`r paste(sapply(ramp1911$month, mname), collapse = " et ")`) sont hors palier, au lieu de former un palier fictif comme avec la segmentation gaussienne. 1088KO change de niveau en `r mname(b1088$month)` (`r pct(b1088$change, signed = TRUE)`), et ses `r n_word[nrow(ramp1088)]` mois de montée restent sous le nouveau palier.
 
 ```{r}
 #| label: fig-break-months

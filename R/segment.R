@@ -50,8 +50,9 @@ biweight_partition <- function(z, K, penalty, minseglen = 1) {
 
 #' End index of each segment of a standardised series (the last is length(z)).
 #'
-#' "biweight": biweight_partition with penalty 3 log(n), the value of
-#' changepoint's MBIC for a change in mean. "normal" (cpt.mean, which assumes
+#' "biweight": biweight_partition with penalty 3 log(n) per change, the
+#' penalty value of changepoint's MBIC for a change in mean, without the
+#' log(segment length) terms its MBIC cost adds. "normal" (cpt.mean, which assumes
 #' unit variance) and "np" (cpt.np, scale free) are kept for comparison; both
 #' return the last observation of each segment (checked on a clean step, the
 #' cpt.np help says otherwise) and fail when n < 2 * minseglen, where no change

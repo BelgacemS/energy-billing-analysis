@@ -24,8 +24,9 @@ seg_args <- function(cost) {
 }
 
 # ---- Synthetic check: which cost separates anomalies from breaks? ---------
-# The three costs share the same minimal plateau, threshold K and MBIC
-# penalty; only the loss differs.
+# The three costs share the same minimal plateau and threshold K. The biweight
+# cost uses 3 log(n) per change; cpt.mean and cpt.np use changepoint's MBIC,
+# which also adds log(segment length) terms to the cost (mean.norm.mbic).
 synthetic <- do.call(rbind, lapply(c("biweight", "normal", "np"), function(cost) {
   transform(synthetic_segmentation(
     n = length(unique(bills$month)), reps = config$synthetic_reps,
@@ -39,7 +40,7 @@ synthetic <- synthetic[order(synthetic$cost, synthetic$noise, synthetic$scenario
 # biweight cost separates anomalies from breaks. Its false break rate stays at
 # 3 to 7.5 % (Gaussian noise) whether the level is constant or has a spike or
 # a compensated pair, and at 2 to 9.5 % with t3 noise; a spike or a pair of 8
-# noise units is flagged in 94 to 100 % of the runs. The Gaussian cost turns a
+# noise units is flagged in 93.5 to 100 % of the runs. The Gaussian cost turns a
 # pair of 5 to 8 units into a false plateau in 90 to 100 % of the runs, and a
 # spike of 8 units in 46 % (t3: 80 %). The nonparametric cost finds a false
 # break in 26 to 36 % of the runs whatever the scenario. All three find a step
@@ -67,12 +68,18 @@ agreement <- table(level_change = shifts$level_change, big_break = shifts$has_bi
 b1240 <- breaks[breaks$site == "1240BR" & breaks$month == as.Date("2021-05-01"), ]
 stopifnot(nrow(b1240) == 1, b1240$change < -0.5)
 
-# Lag-1 autocorrelation of the residuals around the plateaus (ordinary sites,
-# excursions left out): above 0, the noise scale from first differences
-# understates the spread around a plateau.
-small_pb <- pb[!pb$site %in% big & !pb$excursion, ]
-resid_acf1 <- vapply(split(small_pb$resid, small_pb$site),
-                     function(r) stats::acf(r, lag.max = 1, plot = FALSE)$acf[2], numeric(1))
+# Lag-1 autocorrelation of the residuals around the plateaus (ordinary sites):
+# correlation of the residuals of consecutive months of the same plateau, both
+# within the plateau, so that no pair spans a gap or a break. Above 0, the
+# noise scale from first differences understates the spread around a plateau.
+small_pb <- pb[!pb$site %in% big, ]  # sorted by site, then month
+nxt <- c(seq_len(nrow(small_pb))[-1], NA)
+pair_ok <- !is.na(nxt) & small_pb$site == small_pb$site[nxt] &
+  small_pb$plateau == small_pb$plateau[nxt] & !small_pb$excursion & !small_pb$excursion[nxt]
+pair_ok[is.na(pair_ok)] <- FALSE
+resid_acf1 <- vapply(split(which(pair_ok), small_pb$site[pair_ok]), function(i) {
+  stats::cor(small_pb$resid[i], small_pb$resid[nxt[i]])
+}, numeric(1))
 
 # ---- Figures ---------------------------------------------------------------
 # Sites cited in the subject, 1240BR (largest drop) and 1911BB (ramp after
@@ -120,7 +127,7 @@ save_fig(p, "break_months")
 # above 10 %. Of the 67 sites with a level change above 10 % at step 3, 56
 # have a break above 10 % here; 2 of the 23 others do. The small breaks follow
 # slow drifts and site-specific summers: the plateau residuals are
-# autocorrelated (median lag-1 0.15, excursions left out), so the noise scale
+# autocorrelated (median lag-1 0.23 within plateaus), so the noise scale
 # from first differences is too small and the penalty too lenient; step 7 sets
 # K and the penalty. Breaks cluster in April 2020 (24 sites), June 2019 and
 # August 2021 (21 each); above 10 %, April 2020 (9) and November 2019 (7).

@@ -56,8 +56,9 @@ config <- list(
   # plateau_min_months. Biweight cost (Fearnhead and Rigaill, 2019): a month
   # weighs at most K^2, so isolated bills, compensated pairs and short ramps
   # cannot create or move a plateau. Exact optimal partitioning, penalty
-  # 3 log(n) (changepoint's MBIC for a change in mean). A Gaussian two-pass
-  # version (one-month segments, then plateaus) was dropped: an under-billing
+  # 3 log(n) per change (the penalty value of changepoint's MBIC for a mean).
+  # A Gaussian two-pass version (one-month segments, then plateaus) was
+  # dropped: an under-billing
   # over two months followed by its catch-up created a false plateau in every
   # simulated series. "normal" (cpt.mean) and "np" (cpt.np) stay available for
   # the synthetic comparison.
