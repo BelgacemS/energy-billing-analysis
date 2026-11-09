@@ -1,0 +1,9 @@
+# Q2 : prévision de décembre 2021 (première version)
+
+Prévision naïve : consommation par jour du dernier mois facturé, multipliée par les `r days_in_month(config$forecast_month)` jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
+
+```{r}
+f <- res$forecast
+knitr::kable(data.frame(Site = f$site, `kWh prévus` = num(f$kwh), check.names = FALSE),
+             align = "lr")
+```

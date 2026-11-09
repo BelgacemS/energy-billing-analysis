@@ -7,6 +7,14 @@ format:
     papersize: a4
     fig-format: png
     fig-dpi: 300
+    toc: true
+    number-sections: true
+    include-in-header:
+      text: |
+        #set figure.caption(separator: [ : ])
+crossref:
+  tbl-title: "Tableau"
+  fig-title: "Figure"
 execute:
   echo: false
   warning: false
@@ -22,58 +30,45 @@ knitr::opts_knit$set(root.dir = normalizePath(".."))
 #| include: false
 source("R/config.R")
 source("R/load.R")
+desc <- readRDS(file.path(config$results_dir, "descriptive.rds"))
+cv <- readRDS(file.path(config$results_dir, "course_view.rds"))
 res <- readRDS(file.path(config$results_dir, "baseline.rds"))
+n_small <- desc$n_sites - length(desc$big_sites)
+read_table <- function(name) read.csv(file.path(config$tables_dir, paste0(name, ".csv")))
+
 num <- function(x, digits = 0) {
   format(round(x, digits), big.mark = " ", decimal.mark = ",", nsmall = digits, trim = TRUE)
 }
+# Percentages; signed = TRUE writes +3,2 % or −1,7 % (Unicode minus).
+pct <- function(x, digits = 0, signed = FALSE) {
+  s <- num(abs(100 * x), digits)
+  sign <- ifelse(x < 0, "−", if (signed) "+" else "")
+  paste0(sign, s, " %")
+}
+dec <- function(x, digits = 2) ifelse(x < 0, paste0("−", num(-x, digits)), num(x, digits))
 fr_date <- function(d) format(d, "%d/%m/%Y")
 fr_month <- function(d) format(d, "%m/%Y")
+# Typst only reads files under report/, so each figure is copied from
+# outputs/figures to report/_figures (not versioned) before being included.
+fig <- function(name) {
+  file <- paste0(name, ".png")
+  dir.create(file.path("report", "_figures"), showWarnings = FALSE)
+  stopifnot(file.copy(file.path(config$figures_dir, file), file.path("report", "_figures", file),
+                      overwrite = TRUE))
+  knitr::include_graphics(file.path("_figures", file), error = FALSE)
+}
 ```
 
-Le fichier analysé contient `r num(res$n_rows)` factures de `r res$n_sites` sites.
+{{< include _summary.qmd >}}
 
-# Q1 : factures à vérifier (première version)
+{{< include _data.qmd >}}
 
-## Contrôles de cohérence
+{{< include _descriptive.qmd >}}
 
-```{r}
-gaps <- res$coverage[res$coverage$type == "gap", ]
-overlaps <- res$coverage[res$coverage$type == "overlap", ]
-```
+{{< include _q1.qmd >}}
 
-`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire. Périodes sans facturation : `r if (nrow(gaps) == 0) "aucune" else paste0(nrow(gaps), " (", paste(paste(gaps$site, ":", gaps$days, ifelse(gaps$days > 1, "jours", "jour")), collapse = " ; "), ")")`. Périodes facturées deux fois : `r if (nrow(overlaps) == 0) "aucune" else nrow(overlaps)`. Factures de montant nul ou négatif : `r res$n_values`. Sites ayant deux factures pour le même mois : `r res$n_duplicates`.
+{{< include _q2.qmd >}}
 
-```{r}
-p <- res$periods
-knitr::kable(
-  data.frame(Site = p$site, Mois = fr_month(p$month),
-             `Début` = fr_date(p$begin), Fin = fr_date(p$end),
-             `Jours facturés` = p$billed_days, `Jours du mois` = p$month_days,
-             kWh = num(p$kwh), check.names = FALSE),
-  align = "llllrrr")
-```
+{{< include _limits.qmd >}}
 
-`r res$repeats$observed` factures reprennent exactement le montant du mois précédent, sur `r res$repeats$n_sites` sites. Par hasard, on en attend environ `r num(res$repeats$expected, 1)` (nombre moyen d'écarts d'un mois à l'autre égaux à une petite valeur donnée). La probabilité d'en observer au moins autant par hasard est de `r num(res$repeats$p_value, 2)` : `r if (res$repeats$p_value < 0.05) "ces répétitions sont plus fréquentes que le hasard et méritent une vérification" else "ces répétitions ne suffisent pas à conclure à une facturation estimée"`.
-
-## Écarts au niveau local du site (filtre de Hampel)
-
-Chaque facture, ramenée au jour, est comparée à la médiane des `r res$hampel_half_width` mois qui la précèdent et des `r res$hampel_half_width` qui la suivent. Elle est signalée si l'écart dépasse `r res$hampel_threshold` fois la dispersion de cette fenêtre, sans descendre sous le bruit habituel du site. `r nrow(res$hampel_flags)` factures sont signalées, sur `r res$n_hampel_sites` sites, classées par écart en kWh. Pour les `r res$hampel_half_width` premiers et les `r res$hampel_half_width` derniers mois, la fenêtre est tronquée : `r res$n_hampel_edge` des alertes tombent dans ces mois, où la méthode est moins fiable.
-
-```{r}
-h <- res$hampel_flags
-knitr::kable(
-  data.frame(Site = h$site, Mois = fr_month(h$month), `kWh facturés` = num(h$kwh),
-             `kWh attendus` = num(h$expected_kwh), `Écart kWh` = num(h$gap_kwh),
-             Sens = ifelse(h$direction == "over", "sur", "sous"), check.names = FALSE),
-  align = "llrrrl")
-```
-
-# Q2 : prévision de décembre 2021 (première version)
-
-Prévision naïve : consommation par jour du dernier mois facturé, multipliée par les `r days_in_month(config$forecast_month)` jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
-
-```{r}
-f <- res$forecast
-knitr::kable(data.frame(Site = f$site, `kWh prévus` = num(f$kwh), check.names = FALSE),
-             align = "lr")
-```
+{{< include _appendix.qmd >}}
