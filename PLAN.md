@@ -66,6 +66,10 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
 
 ## Étapes
 
+Ordre de réalisation : celui du fichier. L'étape 7 (calibration de Q1) est placée après les étapes 8 et 9 pour que Q2 soit traitée avec les méthodes du cours avant d'approfondir Q1 ; les numéros d'étape restent inchangés.
+
+Rédaction au fil de l'eau : à la fin de chaque étape d'analyse, la partie correspondante du rapport est rédigée en brouillon dans son fichier `report/_*.qmd` (étapes 3 et 3 bis : `_data.qmd` et `_descriptive.qmd` ; 5 à 7 : `_q1.qmd` ; 8 à 11 : `_q2.qmd`), avec les chiffres lus dans `outputs/results/`. Chaque méthode y est rattachée aux notions du cours. L'étape 13 finalise.
+
 ### Mise en place
 
 - [x] **Étape 1 : initialiser le projet**
@@ -90,6 +94,13 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Vérification : les ordres de grandeur du sujet sont retrouvés (médiane d'un site d'environ 2 260 kWh/mois, 2 sites au-dessus de 300 000 kWh) ; chaque figure a une phrase de conclusion notée dans le script.
   - Hors périmètre : détection et prévision.
 
+- [ ] **Étape 3 bis : regard du cours sur des séries représentatives**
+  - Objectif : appliquer la démarche du cours (regarder avant de calculer : tendance, saison, variance, ruptures) à quelques séries, et rattacher les constats de l'étape 3 aux notions du cours. Séries : total des kWh par jour des 90 sites ordinaires, 0698BR, 0998BR, et trois sites types choisis par une règle écrite dans `R/config.R` avant le lancement (stable : plus faible volatilité parmi les sites sans changement de niveau ; rupture : plus grand changement de niveau ; pic : plus grand score de Hampel).
+  - Contenu : `autoplot`, `ggseasonplot`, `ggtsdisplay` (ACF et PACF), décomposition `stl`, `ndiffs` et `nsdiffs` sur chaque série ; écart-type contre moyenne par site pour justifier le log (Box-Cox, `BoxCox.lambda`). Chaque figure a une phrase de conclusion dans le script, reliée à un constat chiffré de l'étape 3.
+  - Fichiers : `scripts/01b_course_view.R`, sorties dans `outputs/` ; structure du rapport en parties (`report/rapport.qmd` assemble avec `{{< include >}}` les fichiers `report/_summary.qmd`, `_data.qmd`, `_descriptive.qmd`, `_q1.qmd`, `_q2.qmd`, `_limits.qmd`, `_appendix.qmd`) ; brouillon de `report/_data.qmd` et `report/_descriptive.qmd` (étapes 3 et 3 bis).
+  - Vérification : figures et tableau des `ndiffs`, `nsdiffs` et `BoxCox.lambda` dans `outputs/` ; pente de log(écart-type) contre log(moyenne) entre sites, proche de 1 si le log convient ; le rapport se génère avec les parties données et statistiques descriptives, sans code ni sortie brute.
+  - Hors périmètre : modélisation.
+
 - [x] **Étape 4 : pipeline minimal de bout en bout**
   - Objectif : une première réponse complète aux deux questions avec les méthodes les plus simples, pour que le projet ait un résultat à chaque étape suivante.
   - Contenu : contrôles déterministes (périodes hors mois calendaire, trous et chevauchements, valeurs nulles ou négatives, doublons, valeurs identiques deux mois de suite comparées à la fréquence attendue par hasard) ; détection par filtre de Hampel ; prévision naïve par jour de décembre 2021 (× 31) ; squelette du rapport qui affiche les deux listes.
@@ -111,16 +122,10 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Vérification : tests sur des séries synthétiques de chaque type ; les cas cités dans l'énoncé (0089KO mai à août 2019, 1067KO juillet 2019, 1088KO, 1978KO et 1986KO en 2020, 0254BB) et 1240BR apparaissent avec un type cohérent, ou leur absence est expliquée.
   - Hors périmètre : calibration.
 
-- [ ] **Étape 7 : validation par injection d'anomalies et calibration**
-  - Objectif : mesurer le comportement du détecteur sans vérité terrain. Construire des panels simulés à partir des données (paliers et effet du mois estimés, résidus rééchantillonnés), y injecter des anomalies de types et d'amplitudes connus (pics de 1 % à 100 %, paire compensée, écart temporaire, rupture de niveau), mesurer taux de détection, taux de fausses alertes et exactitude de la typologie. Comparer le panel au filtre de Hampel sur ce banc. Choisir pénalité, coût (gaussien ou non paramétrique) et seuils par la règle écrite dans `R/config.R` avant le premier lancement. Analyse de sensibilité : nombre d'alertes réelles quand les seuils varient.
-  - Fichiers : `R/simulate.R`, `scripts/05_calibrate.R`, `tests/testthat/test-simulate.R`.
-  - Vérification : courbes détection contre amplitude par type, pour les deux méthodes ; 20 réplications à graines fixées, résultats identiques à deux exécutions ; liste des suspects régénérée avec les paramètres retenus.
-  - Hors périmètre : nouvelles méthodes de détection.
-
 ### Q2 : prévision du mois suivant
 
 - [ ] **Étape 8 : banc d'essai sans fuite et méthodes de référence**
-  - Objectif : backtest à origine glissante, prévision à un mois, validation de juillet 2020 à mai 2021, test de juin à novembre 2021. Tout prétraitement (effet du mois, segmentation, neutralisation des écarts ponctuels, classes, quantiles) est recalculé à chaque origine avec les seules données disponibles. Méthodes de référence : naïve brute, naïve par jour, saisonnière naïve. Métriques : MASE, erreurs relatives (médiane, moyenne, 90e centile), erreur totale en kWh, avec et sans les 2 gros sites. Règle de sélection écrite dans `R/config.R`.
+  - Objectif : backtest à origine glissante, prévision à un mois, validation de juillet 2020 à mai 2021, test de juin à novembre 2021. Tout prétraitement (effet du mois, segmentation, neutralisation des écarts ponctuels, classes, quantiles) est recalculé à chaque origine avec les seules données disponibles. Le banc prend le prétraitement en argument : ceux qui dépendent de la segmentation y sont branchés à l'étape 10, après la calibration de l'étape 7. Méthodes de référence : naïve brute, naïve par jour, saisonnière naïve. Métriques : MASE, erreurs relatives (médiane, moyenne, 90e centile), erreur totale en kWh, avec et sans les 2 gros sites. Règle de sélection écrite dans `R/config.R`.
   - Fichiers : `R/backtest.R`, `scripts/06_baselines.R`, `tests/testthat/test-backtest.R`.
   - Vérification : test de non-fuite (modifier les valeurs postérieures à une origine ne change pas la prévision faite à cette origine) ; erreurs des références sur la validation.
   - Hors périmètre : modèles du cours ; aucune lecture des origines de test.
@@ -130,6 +135,16 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Fichiers : `R/models.R`, `scripts/07_models.R`.
   - Vérification : temps d'exécution mesuré d'abord sur 5 sites ; tableau des erreurs de validation par méthode ; liste des sites où auto.arima échoue, avec le motif.
   - Hors périmètre : classes et variantes robustes.
+
+### Q1 : validation et calibration
+
+- [ ] **Étape 7 : validation par injection d'anomalies et calibration**
+  - Objectif : mesurer le comportement du détecteur sans vérité terrain. Construire des panels simulés à partir des données (paliers et effet du mois estimés, résidus rééchantillonnés), y injecter des anomalies de types et d'amplitudes connus (pics de 1 % à 100 %, paire compensée, écart temporaire, rupture de niveau), mesurer taux de détection, taux de fausses alertes et exactitude de la typologie. Comparer le panel au filtre de Hampel sur ce banc. Choisir pénalité, coût (gaussien ou non paramétrique) et seuils par la règle écrite dans `R/config.R` avant le premier lancement. Analyse de sensibilité : nombre d'alertes réelles quand les seuils varient. Si le temps manque, se limiter aux pics et aux ruptures de niveau, les deux types qui fixent les seuils.
+  - Fichiers : `R/simulate.R`, `scripts/05_calibrate.R`, `tests/testthat/test-simulate.R`.
+  - Vérification : courbes détection contre amplitude par type, pour les deux méthodes ; 20 réplications à graines fixées, résultats identiques à deux exécutions ; liste des suspects régénérée avec les paramètres retenus.
+  - Hors périmètre : nouvelles méthodes de détection.
+
+### Q2 : sélection et évaluation finale
 
 - [ ] **Étape 10 : classes, variantes robustes et sélection**
   - Objectif : classes de comportement par classification hiérarchique (Ward) sur des caractéristiques calculables à chaque origine (niveau, pente, volatilité, ruptures), 2 gros sites à part, nombre de classes choisi par dendrogramme, silhouette et interprétabilité, comparaison avec le suffixe. Candidats supplémentaires : modèle par classe sur la série corrigée de l'effet du mois mutualisé, niveau local robuste (lissage simple après neutralisation des écarts ponctuels et repartant du dernier palier), combinaison simple des meilleurs candidats (Bates & Granger, 1969). Application de la règle de sélection par classe.
@@ -151,9 +166,9 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Vérification : après suppression de `outputs/`, `Rscript run_all.R` régénère tout ; temps total noté dans le README ; tests verts.
   - Hors périmètre : rédaction.
 
-- [ ] **Étape 13 : rédaction du rapport**
-  - Objectif : rapport de style entreprise : synthèse d'une page, données et hypothèses, statistiques descriptives, Q1 (méthode, justification, validation par injection, liste priorisée), Q2 (méthode, protocole, prévisions et marges, sites peu fiables et scénarios), limites et recommandations (obtenir les tarifs pour chiffrer en euros), annexes (liste complète des suspects, table des 92 prévisions).
-  - Fichiers : `report/rapport.qmd` (document principal), qui assemble avec `{{< include >}}` une partie par fichier : `report/_summary.qmd`, `report/_data.qmd`, `report/_descriptive.qmd`, `report/_q1.qmd`, `report/_q2.qmd`, `report/_limits.qmd`, `report/_appendix.qmd`. Chaque membre du binôme peut rédiger sa partie en parallèle sans conflit git.
+- [ ] **Étape 13 : finalisation du rapport**
+  - Objectif : rapport de style entreprise : synthèse d'une page, données et hypothèses, statistiques descriptives, Q1 (méthode, justification, validation par injection, liste priorisée), Q2 (méthode, protocole, prévisions et marges, sites peu fiables et scénarios), limites et recommandations (obtenir les tarifs pour chiffrer en euros), annexes (liste complète des suspects, table des 92 prévisions). Les parties d'analyse sont déjà en brouillon depuis leurs étapes : cette étape rédige la synthèse, les limites et les annexes, puis relit l'ensemble pour la cohérence et le lien aux notions du cours.
+  - Fichiers : `report/_summary.qmd`, `report/_limits.qmd`, `report/_appendix.qmd`, relecture de toutes les parties assemblées par `report/rapport.qmd`.
   - Vérification : `quarto render report/rapport.qmd` produit le PDF ; aucun code ni sortie brute visible ; chaque figure commentée ; chaque affirmation appuyée par un chiffre calculé ou une référence ; hypothèses de travail écrites explicitement.
   - Hors périmètre : nouvelle analyse.
 
