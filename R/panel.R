@@ -73,7 +73,7 @@ panel_fit <- function(bills, effect, big, seg_args = list()) {
   }
   rownames(b) <- NULL
   keep <- c("site", "suffix", "group", "month", "kwh", "month_days", "x", "effect", "y",
-            "segment", "excursion", "plateau", "level", "sigma", "expected_log",
+            "plateau", "level", "excursion", "sigma", "expected_log",
             "expected_kwh", "gap_kwh", "resid", "z")
   list(bills = b[keep], breaks = breaks)
 }

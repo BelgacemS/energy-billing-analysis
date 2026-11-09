@@ -51,25 +51,29 @@ config <- list(
   # Month effect: median deviation from the centred 2x12 moving average (trend
   # of decompose), shared by the ordinary sites; each big site keeps its own
   # (step 3).
-  # Segmentation by PELT on log kWh per day minus the month effect, divided by
-  # the site noise (MAD of first differences / sqrt(2)): the Normal cost of
-  # cpt.mean assumes unit variance. Pass 1 uses one-month segments so that a
-  # spike forms its own segment; runs of short segments lasting less than
-  # plateau_min_months in all are excursions (a longer run, noisier regime or
-  # cluster of spikes, enters pass 2 through its median). Pass 2 segments the
-  # series without the excursions: its segments are the plateaus and its
-  # changes the lasting breaks.
-  segment_cost       = "normal",  # "normal" (cpt.mean) or "np" (cpt.np)
-  segment_penalty    = "MBIC",    # changepoint default, 3 log(n) per change
-  segment_minseglen  = 1,
+  # Segmentation of log kWh per day minus the month effect, divided by the
+  # site noise (MAD of first differences / sqrt(2)), into plateaus of at least
+  # plateau_min_months. Biweight cost (Fearnhead and Rigaill, 2019): a month
+  # weighs at most K^2, so isolated bills, compensated pairs and short ramps
+  # cannot create or move a plateau. Exact optimal partitioning, penalty
+  # 3 log(n) (changepoint's MBIC for a change in mean). A Gaussian two-pass
+  # version (one-month segments, then plateaus) was dropped: an under-billing
+  # over two months followed by its catch-up created a false plateau in every
+  # simulated series. "normal" (cpt.mean) and "np" (cpt.np) stay available for
+  # the synthetic comparison.
+  segment_cost       = "biweight",
+  segment_penalty    = "MBIC",
+  segment_K          = 3,         # outlier threshold, in noise units
   plateau_min_months = 3,         # a plateau lasts at least a quarter
   segment_nquantiles = 10,        # cpt.np default
-  # Synthetic check of both costs (step 5): 35 months, unit noise (Gaussian or
-  # Student t with 3 df scaled to unit variance), amplitudes in noise units.
-  synthetic_reps        = 200,
-  synthetic_seed        = 2021,
-  synthetic_step_sizes  = c(1, 2, 3),
-  synthetic_spike_sizes = c(3, 5, 8),
-  synthetic_step_month  = 21,     # first month of the new level
-  synthetic_spike_month = 15
+  # Synthetic check of the three costs (step 5): 35 months, unit noise
+  # (Gaussian or Student t with 3 df scaled to unit variance), amplitudes in
+  # noise units. Spikes and compensated pairs (two months a below the level,
+  # then 2a above) use synthetic_spike_sizes.
+  synthetic_reps          = 200,
+  synthetic_seed          = 2021,
+  synthetic_step_sizes    = c(1, 2, 3),
+  synthetic_spike_sizes   = c(3, 5, 8),
+  synthetic_step_month    = 21,   # first month of the new level
+  synthetic_anomaly_month = 15
 )

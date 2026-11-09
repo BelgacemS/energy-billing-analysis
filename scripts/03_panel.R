@@ -19,30 +19,31 @@ theme_set(theme_minimal(base_size = 10))
 bills <- load_bills(config$data_path)
 big <- big_sites(bills, config$big_site_kwh)
 seg_args <- function(cost) {
-  list(cost = cost, penalty = config$segment_penalty, minseglen = config$segment_minseglen,
-       plateau_min = config$plateau_min_months, nquantiles = config$segment_nquantiles)
+  list(cost = cost, penalty = config$segment_penalty, plateau_min = config$plateau_min_months,
+       K = config$segment_K, nquantiles = config$segment_nquantiles)
 }
 
-# ---- Synthetic check: does each cost separate spikes from breaks? ----------
-synthetic <- do.call(rbind, lapply(c("normal", "np"), function(cost) {
+# ---- Synthetic check: which cost separates anomalies from breaks? ---------
+# The three costs share the same minimal plateau, threshold K and MBIC
+# penalty; only the loss differs.
+synthetic <- do.call(rbind, lapply(c("biweight", "normal", "np"), function(cost) {
   transform(synthetic_segmentation(
     n = length(unique(bills$month)), reps = config$synthetic_reps,
     seed = config$synthetic_seed, step_sizes = config$synthetic_step_sizes,
     spike_sizes = config$synthetic_spike_sizes, step_month = config$synthetic_step_month,
-    spike_month = config$synthetic_spike_month, seg_args = seg_args(cost)), cost = cost)
+    anomaly_month = config$synthetic_anomaly_month, seg_args = seg_args(cost)), cost = cost)
 }))
 synthetic <- synthetic[order(synthetic$cost, synthetic$noise, synthetic$scenario,
                              synthetic$size), ]
-# Conclusion: the Normal cost with one-month segments separates spikes from
-# breaks. On a constant level it finds a lasting break in 5.5 % of the runs
-# (Gaussian noise) and 6.5 % (t3); a spike of 3 to 8 noise units does not raise
-# that rate (3 to 5.5 %), and a spike of 8 units is set apart as an excursion
-# in 94 % of the runs. A step of 3 units is always found, at the exact month in
-# 78 % (Gaussian) to 88 % (t3) of the runs; a step of 1 unit in 40 to 63 %.
-# The nonparametric cost (cpt.np, same MBIC penalty) never sets a spike apart
-# (at most 5 %) and finds a false break on a constant level in 28 to 36 % of
-# the runs: an empirical distribution cannot be estimated on one month. The
-# Normal cost is kept, no fallback is needed; the penalty is set at step 7.
+# Conclusion: with the same minimal plateau, threshold and penalty, only the
+# biweight cost separates anomalies from breaks. Its false break rate stays at
+# 3 to 7.5 % (Gaussian noise) whether the level is constant or has a spike or
+# a compensated pair, and at 2 to 9.5 % with t3 noise; a spike or a pair of 8
+# noise units is flagged in 94 to 100 % of the runs. The Gaussian cost turns a
+# pair of 5 to 8 units into a false plateau in 90 to 100 % of the runs, and a
+# spike of 8 units in 46 % (t3: 80 %). The nonparametric cost finds a false
+# break in 26 to 36 % of the runs whatever the scenario. All three find a step
+# of 3 units, at the exact month in 78 to 88 % of the runs. Biweight kept.
 
 # ---- Panel on the data -----------------------------------------------------
 # Month effect from the trend of the classical decomposition, estimated apart
@@ -59,13 +60,24 @@ breaks$big <- breaks$site %in% big
 mat <- log_kwh_matrix(bills)
 shifts <- max_level_shift(mat[!rownames(mat) %in% big, ], config$level_shift_window)
 shifts$level_change <- abs(shifts$shift) > log(1 + config$level_shift_min)
-shifts$has_break <- shifts$site %in% breaks$site
 shifts$has_big_break <- shifts$site %in% breaks$site[abs(breaks$change) > config$level_shift_min]
-agreement <- table(level_change = shifts$level_change, has_break = shifts$has_break)
+agreement <- table(level_change = shifts$level_change, big_break = shifts$has_big_break)
+
+# Criterion of step 5: the 1240BR drop of May 2021 is a lasting break.
+b1240 <- breaks[breaks$site == "1240BR" & breaks$month == as.Date("2021-05-01"), ]
+stopifnot(nrow(b1240) == 1, b1240$change < -0.5)
+
+# Lag-1 autocorrelation of the residuals around the plateaus (ordinary sites,
+# excursions left out): above 0, the noise scale from first differences
+# understates the spread around a plateau.
+small_pb <- pb[!pb$site %in% big & !pb$excursion, ]
+resid_acf1 <- vapply(split(small_pb$resid, small_pb$site),
+                     function(r) stats::acf(r, lag.max = 1, plot = FALSE)$acf[2], numeric(1))
 
 # ---- Figures ---------------------------------------------------------------
-# Sites cited in the subject, plus 1240BR (largest drop).
-example_sites <- c("1240BR", "0089KO", "1067KO", "1088KO")
+# Sites cited in the subject, 1240BR (largest drop) and 1911BB (ramp after
+# normal months, the case that ruled out the Gaussian two-pass version).
+example_sites <- c("1240BR", "0089KO", "1911BB", "1088KO")
 ex <- pb[pb$site %in% example_sites, ]
 ex$site <- factor(ex$site, levels = example_sites)
 p <- ggplot(ex, aes(month)) +
@@ -73,7 +85,8 @@ p <- ggplot(ex, aes(month)) +
   geom_line(aes(y = exp(expected_log)), colour = "steelblue") +
   geom_point(aes(y = exp(x), colour = excursion), size = 1) +
   scale_colour_manual(values = c(`FALSE` = "black", `TRUE` = "firebrick"),
-                      labels = c("facture", "excursion courte"), name = NULL) +
+                      labels = c("facture", sprintf("hors palier (écart > %g fois le bruit)",
+                                                     config$segment_K)), name = NULL) +
   scale_y_log10(labels = scales::label_number(big.mark = " ")) +
   scale_x_date(date_breaks = "6 months", date_labels = "%m/%Y") +
   facet_wrap(~site, ncol = 2, scales = "free_y") +
@@ -81,13 +94,15 @@ p <- ggplot(ex, aes(month)) +
        caption = "Gris : palier. Bleu : valeur attendue (palier + effet du mois).") +
   theme(legend.position = "bottom")
 save_fig(p, "panel_examples", height = 5)
-# Conclusion: the expected value follows the plateaus and keeps the isolated
-# bills apart. 1240BR drops 95 % in May 2021, a lasting break (its noisier last
-# months form one plateau). 0089KO bills 201 kWh in June 2019 and 5,133 in
-# August against about 1,500 (z = -43 and +25), then steps up 59 % in
-# September. 1067KO drops 54 % in July 2019 after two intermediate months, and
-# 1088KO triples in August 2020 after a two-month ramp: both ramps are short
-# excursions dated before the new plateau.
+# Conclusion: the expected value follows the plateaus and leaves the anomalous
+# bills apart. 1240BR drops 94 % in May 2021, a lasting break; its noisier
+# last months form two plateaus. 0089KO bills 201 kWh in June 2019 (z = -43)
+# and 5,133 in August (z = +15), then stays on a level 60 % higher; the break
+# is dated in August, one month early, as the catch-up and the new level
+# cannot be told apart. 1911BB keeps its level until August 2019 and triples
+# from October after a ramp in September (z = +91 and -40 for the ramp
+# months). 1088KO triples from June 2020, its two ramp months lying below the
+# new plateau.
 
 br_small <- breaks[!breaks$big, ]
 br_small$size <- ifelse(abs(br_small$change) > config$level_shift_min,
@@ -100,15 +115,15 @@ p <- ggplot(br_small, aes(month, fill = size)) +
   labs(x = "Premier mois du nouveau palier", y = "Nombre de sites ordinaires") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
 save_fig(p, "break_months")
-# Conclusion: with the default MBIC penalty, all 90 ordinary sites have at least
-# one lasting break (311 in all, 225 of 10 % or less), 61 sites one above 10 %.
-# Of the 67 sites with a level change above 10 % at step 3, 58 have a break
-# above 10 % here; 3 of the 23 others do. The small breaks come from slow
-# drifts and site-specific summers: the noise scale comes from first
-# differences and the plateau residuals are autocorrelated (median lag-1
-# 0.24), so the penalty is too lenient; step 7 sets it. Breaks cluster in June
-# 2019 (26 sites), April 2020 (24), August 2021 (22) and December 2019 (20);
-# above 10 %, April 2020 (10), December 2019 (9) and June 2019 (8).
+# Conclusion: with the default MBIC penalty, all 90 ordinary sites have at
+# least one lasting break (322 in all, 242 of 10 % or less), 58 sites one
+# above 10 %. Of the 67 sites with a level change above 10 % at step 3, 56
+# have a break above 10 % here; 2 of the 23 others do. The small breaks follow
+# slow drifts and site-specific summers: the plateau residuals are
+# autocorrelated (median lag-1 0.15, excursions left out), so the noise scale
+# from first differences is too small and the penalty too lenient; step 7 sets
+# K and the penalty. Breaks cluster in April 2020 (24 sites), June 2019 and
+# August 2021 (21 each); above 10 %, April 2020 (9) and November 2019 (7).
 
 # ---- Saved tables and numbers for the report -------------------------------
 write.csv(synthetic, file.path(config$tables_dir, "segment_synthetic.csv"), row.names = FALSE)
@@ -117,9 +132,10 @@ write.csv(effect, file.path(config$tables_dir, "panel_month_effect.csv"), row.na
 
 small_sites <- setdiff(unique(bills$site), big)
 results <- list(
-  config = config[c("segment_cost", "segment_penalty", "segment_minseglen",
-                    "plateau_min_months", "synthetic_reps", "synthetic_step_sizes",
-                    "synthetic_spike_sizes")],
+  config = config[c("segment_cost", "segment_penalty", "segment_K", "plateau_min_months",
+                    "synthetic_reps", "synthetic_step_sizes", "synthetic_spike_sizes",
+                    "synthetic_step_month")],
+  n_months        = length(unique(bills$month)),
   synthetic       = synthetic,
   effect          = effect,
   panel           = pb,
@@ -130,6 +146,7 @@ results <- list(
   n_small         = length(small_sites),
   break_months    = sort(table(format(br_small$month, "%Y-%m")), decreasing = TRUE),
   agreement       = agreement,
+  resid_acf1_median = median(resid_acf1),
   shifts          = shifts,
   n_excursions    = sum(pb$excursion),
   n_excursion_sites = length(unique(pb$site[pb$excursion])),
