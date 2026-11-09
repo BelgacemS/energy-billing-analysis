@@ -7,3 +7,5 @@ cat("Rows read:", nrow(bills), "\n")
 
 dir.create(config$results_dir, recursive = TRUE, showWarnings = FALSE)
 saveRDS(list(n_rows = nrow(bills)), file.path(config$results_dir, "skeleton.rds"))
+
+source("scripts/01_descriptive.R", local = new.env())
