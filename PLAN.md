@@ -90,7 +90,7 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Vérification : les ordres de grandeur du sujet sont retrouvés (médiane d'un site d'environ 2 260 kWh/mois, 2 sites au-dessus de 300 000 kWh) ; chaque figure a une phrase de conclusion notée dans le script.
   - Hors périmètre : détection et prévision.
 
-- [ ] **Étape 4 : pipeline minimal de bout en bout**
+- [x] **Étape 4 : pipeline minimal de bout en bout**
   - Objectif : une première réponse complète aux deux questions avec les méthodes les plus simples, pour que le projet ait un résultat à chaque étape suivante.
   - Contenu : contrôles déterministes (périodes hors mois calendaire, trous et chevauchements, valeurs nulles ou négatives, doublons, valeurs identiques deux mois de suite comparées à la fréquence attendue par hasard) ; détection par filtre de Hampel ; prévision naïve par jour de décembre 2021 (× 31) ; squelette du rapport qui affiche les deux listes.
   - Fichiers : `R/checks.R`, `R/hampel.R`, `scripts/02_baseline.R`, `tests/testthat/test-checks.R`, `tests/testthat/test-hampel.R`, `report/rapport.qmd`.

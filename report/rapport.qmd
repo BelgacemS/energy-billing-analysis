@@ -21,7 +21,53 @@ knitr::opts_knit$set(root.dir = normalizePath(".."))
 ```{r}
 #| include: false
 source("R/config.R")
-res <- readRDS(file.path(config$results_dir, "skeleton.rds"))
+res <- readRDS(file.path(config$results_dir, "baseline.rds"))
+num <- function(x, digits = 0) {
+  format(round(x, digits), big.mark = " ", decimal.mark = ",", nsmall = digits, trim = TRUE)
+}
+fr_date <- function(d) format(d, "%d/%m/%Y")
+fr_month <- function(d) format(d, "%m/%Y")
 ```
 
-Le fichier analysé contient `r format(res$n_rows, big.mark = " ")` factures.
+Le fichier analysé contient `r num(res$n_rows)` factures de `r res$n_sites` sites.
+
+# Q1 : factures à vérifier (première version)
+
+## Contrôles de cohérence
+
+`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire, ce qui laisse `r nrow(res$coverage)` périodes sans facturation. Factures de montant nul ou négatif : `r res$n_values`. Sites ayant deux factures pour le même mois : `r res$n_duplicates`.
+
+```{r}
+p <- res$periods
+knitr::kable(
+  data.frame(Site = p$site, Mois = fr_month(p$month),
+             `Début` = fr_date(p$begin), Fin = fr_date(p$end),
+             `Jours facturés` = p$billed_days, `Jours du mois` = p$month_days,
+             kWh = num(p$kwh), check.names = FALSE),
+  align = "llllrrr")
+```
+
+`r res$repeats$observed` factures reprennent exactement le montant du mois précédent, sur `r res$repeats$n_sites` sites. Par hasard, on en attend environ `r num(res$repeats$expected, 1)` (nombre moyen d'écarts d'un mois à l'autre égaux à une petite valeur donnée) : ces répétitions ne suffisent pas à conclure à une facturation estimée.
+
+## Écarts au niveau habituel du site (filtre de Hampel)
+
+Chaque facture, ramenée au jour, est comparée à la médiane des trois mois qui la précèdent et des trois qui la suivent. Elle est signalée si l'écart dépasse trois fois la dispersion habituelle du site. `r nrow(res$hampel_flags)` factures sont signalées, sur `r res$n_hampel_sites` sites, classées par écart en kWh.
+
+```{r}
+h <- res$hampel_flags
+knitr::kable(
+  data.frame(Site = h$site, Mois = fr_month(h$month), `kWh facturés` = num(h$kwh),
+             `kWh attendus` = num(h$expected_kwh), `Écart kWh` = num(h$gap_kwh),
+             Sens = ifelse(h$direction == "over", "sur", "sous"), check.names = FALSE),
+  align = "llrrrl")
+```
+
+# Q2 : prévision de décembre 2021 (première version)
+
+Prévision naïve : consommation par jour de novembre 2021, multipliée par les 31 jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
+
+```{r}
+f <- res$forecast
+knitr::kable(data.frame(Site = f$site, `kWh prévus` = num(f$kwh), check.names = FALSE),
+             align = "lr")
+```
