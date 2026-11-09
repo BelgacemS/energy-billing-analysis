@@ -29,12 +29,18 @@ Les factures sont comparées en kWh par jour calendaire du mois, et non en kWh p
 
 On divise par le nombre de jours du mois, et non par le nombre de jours facturés : une facture qui ne couvre qu'une partie du mois doit apparaître comme anormale, et non être recalée sur un mois complet.
 
-Les sites sont ensuite comparés sur une échelle logarithmique. Leurs consommations vont de `r num(desc$small_kwh_range[1])` à plus de `r num(floor(max(desc$big_median_kwh) / 1000) * 1000)` kWh par mois, et les écarts n'ont de sens qu'en proportion. La @fig-sd-mean le confirme : d'un site à l'autre, l'amplitude des variations d'un mois sur l'autre croît en proportion du niveau (pente de `r num(cv$slope_noise["slope"], 2)` en échelle log, intervalle de confiance à 95 % de `r num(cv$slope_noise["lower"], 2)` à `r num(cv$slope_noise["upper"], 2)`, qui contient 1). Le logarithme rend donc les écarts comparables entre petits et grands sites. À l'intérieur d'une même série, en revanche, la dispersion ne suit pas le niveau d'une année à l'autre, et la recherche automatique d'une transformation de Box-Cox bute sur les bornes de son intervalle pour toutes les séries examinées : sur 35 mois coupés de ruptures, elle n'est pas informative, et le choix se fait sur le graphique.
+```{r}
+#| include: false
+tot_y <- cv$yearly[cv$yearly$series == "total", ]
+tot_move <- max(tot_y$mean) / min(tot_y$mean) - 1
+```
+
+Les sites sont ensuite comparés sur une échelle logarithmique. Leurs consommations vont de `r num(desc$small_kwh_range[1])` à plus de `r num(floor(max(desc$big_median_kwh) / 1000) * 1000)` kWh par mois, et les écarts n'ont de sens qu'en proportion. Le contrôle du cours, l'écart-type contre la moyenne année par année, n'est pas concluant ici : sur trois années, la moyenne du total ne varie que de `r pct(tot_move)`, et l'écart-type d'une année contient aussi sa tendance et sa saison. La comparaison se fait donc entre sites. L'écart-type d'une série entière croît moins vite que le niveau (pente de `r num(cv$slope_sd["slope"], 2)` en échelle logarithmique, intervalle de confiance à 95 % de `r num(cv$slope_sd["lower"], 2)` à `r num(cv$slope_sd["upper"], 2)`), parce qu'il contient aussi les changements de niveau, sans rapport avec la taille du site. Le bruit d'un mois à l'autre, qui les laisse de côté, croît en proportion du niveau (@fig-noise-mean : pente de `r num(cv$slope_noise["slope"], 2)`, intervalle de `r num(cv$slope_noise["lower"], 2)` à `r num(cv$slope_noise["upper"], 2)`, qui contient 1). Le logarithme rend donc les écarts comparables entre petits et grands sites. La recherche automatique d'une transformation de Box-Cox (méthode de Guerrero) bute sur les bornes de son intervalle pour toutes les séries examinées : sur `r desc$n_months` mois, elle ne compare que deux blocs annuels et n'est pas informative. Comme le recommande le cours, le choix se fait sur le graphique.
 
 ```{r}
-#| label: fig-sd-mean
+#| label: fig-noise-mean
 #| fig-cap: !expr paste0("Bruit d'un mois à l'autre et niveau moyen, pour les ", n_small, " sites ordinaires (échelles logarithmiques).")
-fig("sd_vs_mean")
+fig("noise_vs_mean")
 ```
 
 ## Deux sites à part

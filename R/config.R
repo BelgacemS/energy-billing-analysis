@@ -37,5 +37,12 @@ config <- list(
   # Hampel |z| outside the window edges, among sites without level change.
   # Level changes and Hampel scores use the step 3 and step 4 parameters.
   season_period = 12,
-  stl_s_window  = "periodic"  # 35 months: too short to let the season evolve
+  stl_s_window  = "periodic",  # 35 months: too short to let the season evolve
+  # Non-robust STL, as R and nsdiffs do by default: the robust version sends a
+  # break near the end of a series (1240BR) into the remainder, which wipes out
+  # the trend and season strengths.
+  stl_robust    = FALSE,
+  # Season strength above which nsdiffs' default test asks for D = 1 (fixed in
+  # the forecast package).
+  nsdiffs_seas_threshold = 0.64
 )

@@ -39,3 +39,22 @@ test_that("pick_typical_sites returns three distinct sites by the written rule",
   p <- pick_typical_sites(bills, mat, window = 6, min_shift = 0.1, half_width = 3, threshold = 3)
   expect_equal(unname(p), c("quiet", "step", "spike"))
 })
+
+test_that("mstl_season_strength gives the same decision as nsdiffs' default test", {
+  set.seed(3)
+  n <- 36
+  ys <- list(
+    seasonal = ts(0.1 * sin(2 * pi * (1:n) / 12) + rnorm(n, sd = 0.02), frequency = 12),
+    noise = ts(rnorm(n, sd = 0.02), frequency = 12),
+    walk = ts(cumsum(rnorm(n, sd = 0.02)), frequency = 12)
+  )
+  for (y in ys) {
+    expect_equal(forecast::nsdiffs(y), as.numeric(mstl_season_strength(y) > 0.64))
+  }
+})
+
+test_that("stl_strength: robust STL hides a late break in the remainder", {
+  y <- ts(c(rep(0, 28), rep(-3, 7)) + 0.01 * sin(1:35), frequency = 12)
+  expect_gt(stl_strength(y)["trend"], 0.8)
+  expect_lt(stl_strength(y, robust = TRUE)["trend"], 0.2)
+})

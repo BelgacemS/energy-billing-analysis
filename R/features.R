@@ -172,8 +172,8 @@ pick_typical_sites <- function(bills, mat, window, min_shift, half_width, thresh
 #' Strength of trend and seasonality from an STL decomposition, in [0, 1]:
 #' 1 - Var(remainder) / Var(component + remainder) (Hyndman and
 #' Athanasopoulos, FPP 3rd ed., section 4.3).
-stl_strength <- function(y, s_window = "periodic") {
-  fit <- stats::stl(y, s.window = s_window, robust = TRUE)
+stl_strength <- function(y, s_window = "periodic", robust = FALSE) {
+  fit <- stats::stl(y, s.window = s_window, robust = robust)
   comp <- fit$time.series  # (T, 3): seasonal, trend, remainder
   r <- comp[, "remainder"]
   c(trend = max(0, 1 - stats::var(r) / stats::var(comp[, "trend"] + r)),
