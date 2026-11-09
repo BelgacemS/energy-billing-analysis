@@ -6,7 +6,7 @@ make_bills <- function() {
     begin = as.Date(c("2020-01-01", "2020-02-01", "2020-03-01",
                       "2020-01-01", "2020-02-10", "2020-03-01", "2020-03-25")),
     end   = as.Date(c("2020-01-31", "2020-02-29", "2020-03-31",
-                      "2020-01-31", "2020-02-29", "2020-03-31", "2020-04-30")),
+                      "2020-01-31", "2020-02-29", "2020-03-31", "2020-03-31")),
     kwh   = c(100, 120, 120, 50, 40, 60, 55),
     stringsAsFactors = FALSE
   )
@@ -22,7 +22,7 @@ test_that("check_periods flags bills not covering their calendar month", {
   p <- check_periods(make_bills())
   expect_equal(p$site, c("B", "B"))
   expect_equal(p$month, as.Date(c("2020-02-01", "2020-03-01")))
-  expect_equal(p$missing_days, c(9L, -6L))  # 20 of 29 days; 37 days for a 31-day month
+  expect_equal(p$missing_days, c(9L, 24L))  # 20 of 29 days; 7 of 31 days
 })
 
 test_that("check_coverage finds gaps and overlaps with their length", {

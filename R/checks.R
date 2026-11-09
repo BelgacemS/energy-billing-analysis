@@ -14,6 +14,8 @@ check_periods <- function(bills) {
 #'
 #' `days` is the number of uncovered days (gap, > 0) or of days billed twice
 #' (overlap, < 0) between the end of a bill and the start of the next one.
+#' A series that starts late or stops early is not detected here; on these
+#' data the step 2 test of a complete 92 x 35 panel rules it out.
 check_coverage <- function(bills) {
   b <- bills[order(bills$site, bills$begin), ]
   same_site <- b$site[-1] == b$site[-nrow(b)]
@@ -47,6 +49,8 @@ check_duplicates <- function(bills) {
 #' any other small signed value k. The reference is the mean count of changes
 #' equal to k for k in +-1..+-`k_max` kWh, and the p-value is the Poisson
 #' probability of seeing at least the observed number of zeros.
+#' Consecutive bills of a site are assumed to be consecutive months, as in
+#' the complete panel tested at step 2.
 check_repeats <- function(bills, k_max = 10) {
   b <- bills[order(bills$site, bills$month), ]
   same_site <- b$site[-1] == b$site[-nrow(b)]

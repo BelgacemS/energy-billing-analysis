@@ -6,6 +6,7 @@ source("R/load.R")
 source("R/features.R")
 source("R/checks.R")
 source("R/hampel.R")
+source("R/naive.R")
 
 for (d in c(config$tables_dir, config$results_dir)) {
   dir.create(d, recursive = TRUE, showWarnings = FALSE)
@@ -26,19 +27,8 @@ hampel_flags <- hampel_flags[order(-abs(hampel_flags$gap_kwh)), ]
 hampel_flags$direction <- ifelse(hampel_flags$gap_kwh > 0, "over", "under")
 
 # ---- Q2: per-day naive forecast of December 2021 ---------------------------
-last_month <- max(bills$month)
-last <- bills[bills$month == last_month, c("site", "suffix", "kwh_per_day")]
-forecast <- data.frame(
-  site       = last$site,
-  suffix     = last$suffix,
-  month      = config$forecast_month,
-  method     = "naive_per_day",
-  kwh        = last$kwh_per_day * days_in_month(config$forecast_month),
-  stringsAsFactors = FALSE
-)
-forecast <- forecast[order(forecast$site), ]
-stopifnot(nrow(forecast) == length(unique(bills$site)), !anyNA(forecast$kwh),
-          add_months(last_month, 1) == config$forecast_month)
+forecast <- naive_per_day_forecast(bills, config$forecast_month)
+stopifnot(nrow(forecast) == length(unique(bills$site)), !anyNA(forecast$kwh))
 
 # ---- Saved tables and numbers for the report -------------------------------
 write.csv(periods, file.path(config$tables_dir, "check_periods.csv"), row.names = FALSE)
@@ -57,6 +47,9 @@ results <- list(
   repeats         = repeats,
   hampel_flags    = hampel_flags,
   n_hampel_sites  = length(unique(hampel_flags$site)),
+  n_hampel_edge   = sum(hampel_flags$edge),
+  hampel_half_width = config$hampel_half_width,
+  hampel_threshold  = config$hampel_threshold,
   forecast        = forecast,
   forecast_total  = sum(forecast$kwh)
 )

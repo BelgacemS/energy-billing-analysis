@@ -39,3 +39,8 @@ test_that("hampel_bills gives the gap in kWh with its sign, site by site", {
   expect_lt(flagged$gap_kwh, 0)
   expect_equal(flagged$gap_kwh, flagged$kwh - flagged$expected_kwh)
 })
+
+test_that("hampel marks truncated windows at both ends", {
+  h <- hampel(1:10 / 100, half_width = 3, threshold = 3)
+  expect_equal(h$edge, c(TRUE, TRUE, TRUE, rep(FALSE, 4), TRUE, TRUE, TRUE))
+})

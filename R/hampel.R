@@ -7,7 +7,8 @@
 #' on each side (truncated at the ends). The scale is the window MAD (x 1.4826,
 #' consistent with the standard deviation under normality), floored by
 #' `min_scale` so that a window of near-identical values does not flag every
-#' small change. Returns the window median, the scale and the robust z-score.
+#' small change. Returns the window median, the scale, the robust z-score and
+#' `edge`, TRUE when the window is truncated (one-sided, so less reliable).
 hampel <- function(x, half_width, threshold, min_scale = 0) {
   n <- length(x)
   med <- scale <- numeric(n)
@@ -17,7 +18,8 @@ hampel <- function(x, half_width, threshold, min_scale = 0) {
     scale[i] <- max(stats::mad(w), min_scale)
   }
   z <- (x - med) / scale
-  data.frame(median = med, scale = scale, z = z, flag = abs(z) > threshold)
+  edge <- seq_len(n) <= half_width | seq_len(n) > n - half_width
+  data.frame(median = med, scale = scale, z = z, flag = abs(z) > threshold, edge = edge)
 }
 
 #' Hampel filter on log kWh per day of every site.
