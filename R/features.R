@@ -147,3 +147,53 @@ naive_errors <- function(bills, months) {
   out$err_per_day <- abs(out$kwh - out$prev_kwh_per_day * out$month_days) / out$kwh
   out[order(out$site, out$month), c("site", "month", "err_raw", "err_per_day")]
 }
+
+#' Robust noise level of each site: MAD of the first differences / sqrt(2).
+site_noise <- function(mat) {
+  apply(mat, 1, function(x) stats::mad(diff(x)) / sqrt(2))
+}
+
+#' Three distinct typical sites (see config, step 3 bis).
+#'
+#' `mat` is the log kWh per day matrix of the ordinary sites, `bills` their
+#' bills. Returns c(stable, break, spike).
+pick_typical_sites <- function(bills, mat, window, min_shift, half_width, threshold) {
+  shifts <- max_level_shift(mat, window)
+  no_change <- shifts$site[abs(shifts$shift) <= log(1 + min_shift)]
+  noise <- site_noise(mat)
+  stable <- names(which.min(noise[no_change]))
+  brk <- shifts$site[which.max(abs(shifts$shift))]
+  h <- hampel_bills(bills, half_width, threshold)
+  h <- h[!h$edge & h$site %in% setdiff(no_change, stable), ]
+  spike <- h$site[which.max(abs(h$z))]
+  c(stable = stable, `break` = brk, spike = spike)
+}
+
+#' Strength of trend and seasonality from an STL decomposition, in [0, 1]:
+#' 1 - Var(remainder) / Var(component + remainder) (Hyndman and
+#' Athanasopoulos, FPP 3rd ed., section 4.3).
+stl_strength <- function(y, s_window = "periodic", robust = FALSE) {
+  fit <- stats::stl(y, s.window = s_window, robust = robust)
+  comp <- fit$time.series  # (T, 3): seasonal, trend, remainder
+  r <- comp[, "remainder"]
+  c(trend = max(0, 1 - stats::var(r) / stats::var(comp[, "trend"] + r)),
+    season = max(0, 1 - stats::var(r) / stats::var(comp[, "seasonal"] + r)))
+}
+
+#' Slope of log(sd) on log(mean), with its confidence interval. A slope near
+#' 1 means the spread grows in proportion to the level, which the log removes;
+#' near 0, no transformation is needed.
+sd_mean_slope <- function(mean, sd, level = 0.95) {
+  fit <- stats::lm(log(sd) ~ log(mean))
+  ci <- stats::confint(fit, "log(mean)", level = level)
+  c(slope = unname(stats::coef(fit)[2]), lower = ci[1], upper = ci[2])
+}
+
+#' Seasonal strength as measured by nsdiffs' default test: same formula as
+#' stl_strength, on forecast::mstl, whose season may evolve over the years.
+mstl_season_strength <- function(y) {
+  fit <- forecast::mstl(y)  # (T, k): Data, Trend, Season..., Remainder
+  r <- fit[, "Remainder"]
+  s <- fit[, grep("Season", colnames(fit), fixed = TRUE)]
+  max(0, min(1, 1 - stats::var(r) / stats::var(r + s)))
+}

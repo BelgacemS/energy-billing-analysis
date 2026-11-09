@@ -1,0 +1,133 @@
+# Statistiques descriptives
+
+```{r}
+#| include: false
+sites <- read_table("site_summary")
+small <- sites[!sites$big, ]
+g_min <- small[which.min(small$growth), ]
+g_max <- small[which.max(small$growth), ]
+prof <- read_table("month_profile")
+day_prof <- prof[prof$unit == "kWh par jour", ]
+winter <- day_prof$ratio[day_prof$moy %in% 1:3] - 1
+summer <- day_prof$ratio[day_prof$moy %in% 7:8] - 1
+change_months <- sort(table(small$shift_month[small$level_change]), decreasing = TRUE)
+top_months <- head(change_months, 4)
+month_fr <- function(ym) {
+  m <- c("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+         "septembre", "octobre", "novembre", "décembre")
+  paste(m[as.integer(substr(ym, 6, 7))], substr(ym, 1, 4))
+}
+tests <- cv$tests
+row_of <- function(s) tests[tests$series == s, ]
+typ <- cv$typical
+brk_drop <- exp(sites$shift[sites$site == typ[["break"]]]) - 1
+lvl_q <- quantile(small$median_kwh, c(0.1, 0.9))
+big_ratio <- min(desc$big_median_kwh) / desc$median_site_kwh
+stable_ratio <- abs(cv$stable_shift) / cv$stable_noise
+first_test <- seq(as.Date(paste0(min(cv$yearly$year), "-01-01")), by = "month",
+                  length.out = config$level_shift_window + 1)[config$level_shift_window + 1]
+first_test <- tools::toTitleCase(month_fr(format(first_test, "%Y-%m")))
+brk_month <- sites$shift_month[sites$site == typ[["break"]]]
+sp <- res$hampel_flags[res$hampel_flags$site == typ[["spike"]], ]
+sp_hi <- sp[which.max(sp$z), ]
+sp_lo <- sp[which.min(sp$z), ]
+```
+
+La démarche suit celle du cours : regarder les séries avant de calculer, puis se demander s'il y a une tendance, une saison, une variance qui change avec le niveau, et des ruptures ou des valeurs isolées. Elle est appliquée à l'ensemble des sites et à six séries représentatives : le total des `r n_small` sites ordinaires, les deux gros sites, et trois sites choisis par une règle fixée avant de les regarder, le moins bruité (`r typ[["stable"]]`), celui qui a le plus grand changement de niveau (`r typ[["break"]]`) et celui qui a la plus forte valeur isolée (`r typ[["spike"]]`).
+
+## Niveaux
+
+```{r}
+#| label: fig-levels
+#| fig-cap: "Consommation mensuelle médiane de chaque site (échelle logarithmique)."
+fig("levels")
+```
+
+Les `r n_small` sites ordinaires facturent entre `r num(desc$small_kwh_range[1])` et `r num(desc$small_kwh_range[2])` kWh par mois, et 80 % d'entre eux entre `r num(round(lvl_q[1], -2))` et `r num(round(lvl_q[2], -2))` (@fig-levels). Les deux gros sites sont plus de `r floor(big_ratio / 10) * 10` fois au-dessus du site médian, d'où leur traitement à part.
+
+## Tendance et ruptures
+
+```{r}
+#| label: fig-series
+#| fig-cap: "Six séries représentatives, en kWh par jour."
+#| fig-height: 8
+fig("course_series")
+```
+
+La @fig-series montre que la tendance n'est pas le phénomène principal. Le total des sites ordinaires progresse de `r pct(cv$growth_total, 1)` entre `r min(cv$yearly$year)` et `r max(cv$yearly$year)`, et le site ordinaire médian de `r pct(desc$median_growth, 1)`, mais les écarts entre sites sont très larges : de `r pct(g_min$growth, signed = TRUE)` pour `r g_min$site` à `r pct(g_max$growth, signed = TRUE)` pour `r g_max$site`. Ces extrêmes ne viennent pas d'une pente régulière mais de sauts. Les trois sites types illustrent les cas difficiles décrits en cours. `r typ[["break"]]` perd `r pct(-brk_drop)` de sa consommation en `r month_fr(brk_month)`. `r typ[["spike"]]` a une facture très haute en `r month_fr(format(as.Date(sp_hi$month), "%Y-%m"))` (`r pct(sp_hi$gap_kwh / sp_hi$expected_kwh, signed = TRUE)` par rapport à son niveau local), puis une facture basse en `r month_fr(format(as.Date(sp_lo$month), "%Y-%m"))` (`r pct(sp_lo$gap_kwh / sp_lo$expected_kwh, signed = TRUE)`). Même `r typ[["stable"]]`, le site le plus régulier d'un mois sur l'autre (variation typique de `r pct(cv$stable_noise, 2)`), change de palier de `r pct(cv$stable_shift, 1, signed = TRUE)` en `r month_fr(cv$stable_shift_month)`, soit environ `r num(stable_ratio)` fois son bruit habituel.
+
+```{r}
+#| label: fig-heatmap
+#| fig-cap: "Écart de chaque facture au niveau médian de son site (sites classés par suffixe puis par évolution)."
+#| fig-height: 9
+fig("heatmap")
+```
+
+La carte de la @fig-heatmap généralise ce constat : la plupart des lignes changent de couleur par paliers. `r desc$n_level_change` des `r n_small` sites ordinaires (`r pct(desc$share_level_change)`) ont un changement de niveau de plus de `r pct(config$level_shift_min)` entre deux périodes de `r config$level_shift_window` mois. Ces changements se concentrent sur quelques mois (`r paste(paste0(month_fr(names(top_months)), " : ", as.integer(top_months), " sites"), collapse = " ; ")`), ce qui évoque des opérations menées sur une partie du réseau. `r first_test` est toutefois le premier mois où la mesure est possible, et il regroupe aussi les changements antérieurs.
+
+## Saisonnalité
+
+```{r}
+#| label: fig-profile
+#| fig-cap: !expr paste0("Profil mensuel commun des sites ordinaires, en kWh facturés et en kWh par jour (années complètes ", paste(desc$profile_years, collapse = " et "), ").")
+fig("month_profile")
+```
+
+En kWh facturés, le profil suit surtout la longueur des mois (@fig-profile). Ramené au jour, il est presque plat : de `r pct(min(winter), 1, signed = TRUE)` à `r pct(max(winter), 1, signed = TRUE)` de janvier à mars, et `r pct(summer[1], 1, signed = TRUE)` en juillet, `r pct(summer[2], 1, signed = TRUE)` en août. Il existe donc une saison réelle, liée à l'été, mais elle est faible devant les ruptures.
+
+La décomposition STL du cours le chiffre. La force de la saison (part de la variation hors tendance expliquée par la composante saisonnière, entre 0 et 1) vaut `r num(row_of("total")$season_strength, 2)` pour le total des sites ordinaires, au-dessus du seuil de `r num(config$nsdiffs_seas_threshold, 2)` retenu par la fonction nsdiffs du cours. Ce n'est pas contradictoire avec une amplitude de quelques pour cent : en additionnant les sites, leurs bruits se compensent, et une petite saison régulière ressort nettement. Site par site, la saison est plus faible : `r cv$n_season_weak` des `r n_small` sites restent sous le seuil (médiane `r num(cv$site_strength_q["50%", "season"], 2)`). La force de la composante de niveau a une médiane de `r num(cv$site_strength_q["50%", "trend"], 2)` : ce sont le niveau et ses changements qui dominent.
+
+Cette saison faible est commune aux sites. Les profils des trois suffixes ne diffèrent pas, et les écarts de croissance ou de fréquence des ruptures entre suffixes ne sont pas significatifs (tests de Kruskal-Wallis et de Fisher, p = `r num(desc$suffix_tests["growth_kruskal_p"], 2)` et `r num(desc$suffix_tests["level_change_fisher_p"], 2)`). L'effet propre de chaque site, lui, se reproduit mal d'une année à l'autre : la corrélation de rang entre deux années va de `r dec(desc$repro_range_rho[1])` à `r dec(desc$repro_range_rho[2])` selon le mois, avec une médiane proche de `r num(max(desc$repro_median_rho), 1)`. Estimé sur deux ans, un effet du mois propre à chaque site serait surtout du bruit ; il est plus sûr d'estimer un effet commun à tous les sites ordinaires, comme on combine des indices saisonniers (Withycombe, 1989).
+
+```{r}
+#| label: fig-season-0698
+#| fig-cap: "0698BR : une courbe par année, en kWh par jour."
+fig("seasonplot_0698BR")
+```
+
+Le gros site 0698BR fait exception (@fig-season-0698) : la même forme revient chaque année, un creux en hiver et un pic en juillet et août, décalée vers le haut par sa croissance. Sa composante saisonnière va de `r pct(cv$big_season[1, "0698BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0698BR"], signed = TRUE)` autour de la tendance (force `r num(row_of("0698BR")$season_strength, 2)`). Le second gros site, 0998BR, a une saison de faible amplitude (`r pct(cv$big_season[1, "0998BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0998BR"], signed = TRUE)` autour de la tendance), dont la force (`r num(row_of("0998BR")$season_strength, 2)`) reste juste sous le seuil retenu par nsdiffs. Les deux gros sites gardent donc leur propre traitement de la saison.
+
+## Stationnarité et autocorrélation
+
+```{r}
+#| label: fig-acf-total
+#| fig-cap: "Total des sites ordinaires (logarithme des kWh par jour), avec ses fonctions d'autocorrélation simple (ACF) et partielle (PACF)."
+fig("tsdisplay_total")
+```
+
+L'autocorrélation du total décroît lentement, de `r num(cv$acf_total["lag1"], 2)` au premier retard, sans pic au retard 12 (`r num(cv$acf_total["lag12"], 2)`), et l'autocorrélation partielle n'a qu'un pic au premier retard (@fig-acf-total) : le niveau dérive comme une marche aléatoire. Après une différence (@fig-acf-diff), l'autocorrélation au premier retard tombe à `r dec(cv$acf_total["lag1_after_diff"])`, loin du signe de sur-différenciation vu en cours. La plus forte autocorrélation est alors au retard 12 (`r num(cv$acf_total["lag12_after_diff"], 2)`), trace de la saison d'été, mais elle reste sous la borne de significativité à 95 % (`r num(cv$acf_total["bound_after_diff"], 2)`) sur `r desc$n_months - 1` points.
+
+```{r}
+#| label: fig-acf-diff
+#| fig-cap: "Total des sites ordinaires après une différence, avec ses fonctions d'autocorrélation simple et partielle."
+fig("tsdisplay_total_diff")
+```
+
+```{r}
+#| label: tbl-tests
+#| tbl-cap: "Ordres de différenciation suggérés pour les six séries (logarithme des kWh par jour)."
+knitr::kable(
+  data.frame(`Série` = tests$label, `d (ndiffs)` = tests$ndiffs,
+             `D, test seas` = tests$nsdiffs_seas, `D, test OCSB` = tests$nsdiffs_ocsb,
+             `Force de la saison` = num(tests$season_strength, 2), check.names = FALSE),
+  align = "lrrrr")
+```
+
+Le @tbl-tests résume les tests du cours. Toutes les séries demandent une différence simple, et aucune après celle-ci. Une différence saisonnière n'est clairement justifiée que pour 0698BR, seul cas où les deux tests concordent. Pour `r typ[["break"]]`, les différences suggérées viennent probablement de la rupture : un modèle qui la prendrait pour une tendance ou une saison prévoirait mal.
+
+```{r}
+#| include: false
+sd_tab <- cv$site_D_table
+n_seas <- sum(sd_tab["1", ])
+n_ocsb <- sum(sd_tab[, "1"])
+n_both <- sd_tab["1", "1"]
+n_div <- sd_tab["1", "0"] + sd_tab["0", "1"]
+```
+
+Pour le total, les indices sont partagés. Les deux mesures de la force de la saison dépassent le seuil et le test par défaut demande une différence saisonnière ; le test OCSB n'en demande pas, et l'autocorrélation au retard 12 de la série différenciée n'est pas significative. La saison existe, mais elle est petite. Plutôt qu'une différence saisonnière, qui consommerait `r config$season_period` des `r desc$n_months` mois, elle sera traitée comme un effet du mois commun aux sites ordinaires, estimé une seule fois pour tous.
+
+Le désaccord se retrouve site par site : le test par défaut demande une différence saisonnière pour `r n_seas` des `r n_small` sites ordinaires, le test OCSB pour `r n_ocsb` ; ils la demandent ensemble pour `r n_both` et divergent sur `r n_div`. Site par site, une différence saisonnière reporterait en outre sur décembre 2021 l'effet propre de décembre 2020 de chaque site, dont on a vu qu'il ne se reproduit pas. La procédure automatique auto.arima utilisant le test par défaut, les deux variantes, avec et sans saison, seront comparées sur une période de validation plutôt que départagées par un test.
+
+## Ce que l'on retient pour la suite
+
+Quatre constats orientent les méthodes. Les sites changent souvent de niveau par paliers, ce qui impose de distinguer une rupture durable d'un pic isolé avant de juger une facture. La saison existe mais elle est petite et commune aux sites ordinaires : elle se traite par un effet du mois commun, et site par site seulement pour 0698BR. Le niveau dérive d'un mois à l'autre comme une marche aléatoire, si bien que la prévision naïve est une référence difficile à battre. Enfin, les ruptures fausseront les modèles ARIMA ajustés automatiquement, ce qu'il faudra repérer site par site.

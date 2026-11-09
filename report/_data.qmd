@@ -1,0 +1,48 @@
+# Données et hypothèses
+
+```{r}
+#| include: false
+naive <- desc$naive
+nv_raw <- naive$median_rel_error[naive$forecast == "naive_raw"]
+nv_day <- naive$median_rel_error[naive$forecast == "naive_per_day"]
+nv_better <- naive$share_per_day_better[naive$forecast == "naive_per_day"]
+```
+
+## Le fichier
+
+L'étude porte sur un seul fichier de `r num(res$n_rows)` factures d'électricité : `r desc$n_sites` sites d'accès radio, chacun facturé tous les mois de janvier 2019 à novembre 2021 (`r desc$n_months` mois). Chaque ligne donne le site, le début et la fin de la période facturée, et l'énergie facturée en kWh. Aucune autre information n'est disponible : ni tarif, ni équipement, ni localisation. Le nom de chaque site se termine par un suffixe de deux lettres (BB, BR ou KO) dont le sens n'est pas connu.
+
+Le panel est complet : chaque site a exactement une facture par mois, sans montant manquant, nul ou négatif. Les montants sont écrits avec une espace comme séparateur de milliers ; ils sont convertis dans le code, le fichier d'origine n'est jamais modifié.
+
+## Hypothèses de travail
+
+L'analyse repose sur quatre hypothèses, faute de pouvoir les vérifier auprès du fournisseur :
+
+- la colonne des kWh est l'énergie facturée entre les dates de début et de fin, dans la même unité pour toutes les lignes ;
+- une facture normale couvre exactement un mois calendaire, et tout écart de dates est une anomalie de facturation ;
+- un écart fort et isolé est plus probablement une erreur de facturation, un écart qui dure plus probablement un changement d'équipement sur le site ;
+- le suffixe du nom est une variable de regroupement possible, rien de plus.
+
+## Unité d'analyse : les kWh par jour du mois, en logarithme
+
+Les factures sont comparées en kWh par jour calendaire du mois, et non en kWh par facture. Un mois de 31 jours consomme mécaniquement plus qu'un mois de 28 : en kWh bruts, février vaut `r num(desc$feb_ratio_raw, 2)` fois le niveau annuel du site, contre `r num(desc$feb_ratio_day, 2)` une fois ramené au jour, soit le niveau de janvier et de mars. Cette correction compte aussi pour la prévision. Prévoir le mois suivant par le dernier mois connu donne une erreur médiane de `r pct(nv_raw, 1)` en kWh bruts et de `r pct(nv_day, 1)` en kWh par jour (factures de février 2019 à mai 2021), et la version par jour est meilleure pour `r pct(nv_better)` des factures.
+
+On divise par le nombre de jours du mois, et non par le nombre de jours facturés : une facture qui ne couvre qu'une partie du mois doit apparaître comme anormale, et non être recalée sur un mois complet.
+
+```{r}
+#| include: false
+tot_y <- cv$yearly[cv$yearly$series == "total", ]
+tot_move <- max(tot_y$mean) / min(tot_y$mean) - 1
+```
+
+Les sites sont ensuite comparés sur une échelle logarithmique. Leurs consommations vont de `r num(desc$small_kwh_range[1])` à plus de `r num(floor(max(desc$big_median_kwh) / 1000) * 1000)` kWh par mois, et les écarts n'ont de sens qu'en proportion. Le contrôle du cours, l'écart-type contre la moyenne année par année, n'est pas concluant ici : sur trois années, la moyenne du total ne varie que de `r pct(tot_move)`, et l'écart-type d'une année contient aussi sa tendance et sa saison. La comparaison se fait donc entre sites. L'écart-type d'une série entière croît moins vite que le niveau (pente de `r num(cv$slope_sd["slope"], 2)` en échelle logarithmique, intervalle de confiance à 95 % de `r num(cv$slope_sd["lower"], 2)` à `r num(cv$slope_sd["upper"], 2)`), parce qu'il contient aussi les changements de niveau, sans rapport avec la taille du site. Le bruit d'un mois à l'autre, qui les laisse de côté, croît en proportion du niveau (@fig-noise-mean : pente de `r num(cv$slope_noise["slope"], 2)`, intervalle de `r num(cv$slope_noise["lower"], 2)` à `r num(cv$slope_noise["upper"], 2)`, qui contient 1). Le logarithme rend donc les écarts comparables entre petits et grands sites. La recherche automatique d'une transformation de Box-Cox (méthode de Guerrero) bute sur les bornes de son intervalle pour toutes les séries examinées : sur `r desc$n_months` mois, elle ne compare que deux blocs annuels et n'est pas informative. Comme le recommande le cours, le choix se fait sur le graphique.
+
+```{r}
+#| label: fig-noise-mean
+#| fig-cap: !expr paste0("Bruit d'un mois à l'autre et niveau moyen, pour les ", n_small, " sites ordinaires (échelles logarithmiques).")
+fig("noise_vs_mean")
+```
+
+## Deux sites à part
+
+Deux sites, `r paste(desc$big_sites, collapse = " et ")`, facturent chacun plus de `r num(floor(min(desc$big_median_kwh) / 1000) * 1000)` kWh par mois, contre `r num(desc$median_site_kwh)` pour le site médian. Ils représentent à eux seuls `r pct(desc$big_share_kwh)` des kWh facturés. Tout total en kWh étant dominé par eux, ils sont présentés séparément dans la suite.

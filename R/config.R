@@ -28,5 +28,21 @@ config <- list(
   # standard deviations (the usual default values).
   hampel_half_width = 3,
   hampel_threshold  = 3,
-  forecast_month    = as.Date("2021-12-01")
+  forecast_month    = as.Date("2021-12-01"),
+
+  # Course view (step 3 bis).
+  # Three distinct ordinary sites, picked before looking at their plots:
+  # stable = lowest noise (MAD of first differences / sqrt(2)) among sites
+  # without level change; break = largest level change; spike = largest
+  # Hampel |z| outside the window edges, among sites without level change.
+  # Level changes and Hampel scores use the step 3 and step 4 parameters.
+  season_period = 12,
+  stl_s_window  = "periodic",  # 35 months: too short to let the season evolve
+  # Non-robust STL, as R and nsdiffs do by default: the robust version sends a
+  # break near the end of a series (1240BR) into the remainder, which wipes out
+  # the trend and season strengths.
+  stl_robust    = FALSE,
+  # Season strength above which nsdiffs' default test asks for D = 1 (fixed in
+  # the forecast package).
+  nsdiffs_seas_threshold = 0.64
 )

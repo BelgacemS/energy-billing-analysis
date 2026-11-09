@@ -94,7 +94,7 @@ Rédaction au fil de l'eau : à la fin de chaque étape d'analyse, la partie cor
   - Vérification : les ordres de grandeur du sujet sont retrouvés (médiane d'un site d'environ 2 260 kWh/mois, 2 sites au-dessus de 300 000 kWh) ; chaque figure a une phrase de conclusion notée dans le script.
   - Hors périmètre : détection et prévision.
 
-- [ ] **Étape 3 bis : regard du cours sur des séries représentatives**
+- [x] **Étape 3 bis : regard du cours sur des séries représentatives**
   - Objectif : appliquer la démarche du cours (regarder avant de calculer : tendance, saison, variance, ruptures) à quelques séries, et rattacher les constats de l'étape 3 aux notions du cours. Séries : total des kWh par jour des 90 sites ordinaires, 0698BR, 0998BR, et trois sites types distincts, hors gros sites, choisis par une règle écrite dans `R/config.R` avant le lancement : stable, le plus faible bruit (MAD des différences premières divisée par √2) parmi les sites sans changement de niveau ; rupture, le plus grand changement de niveau ; pic, le plus grand score de Hampel hors bords de fenêtre, parmi les sites sans changement de niveau.
   - Contenu : `autoplot`, `ggseasonplot`, `ggtsdisplay` (ACF et PACF), décomposition `stl`, `ndiffs` et `nsdiffs` sur chaque série ; justification du log comme au cours : écart-type contre moyenne par année pour le total et les 2 gros sites (`aggregate`), et entre sites (comparaison sur une échelle commune) ; `BoxCox.lambda` en complément, sachant qu'il renvoie toujours une valeur et que le graphique décide. Chaque figure a une phrase de conclusion dans le script, reliée à un constat chiffré de l'étape 3.
   - Fichiers : `scripts/01b_course_view.R`, `run_all.R`, sorties dans `outputs/` ; brouillon de `report/_data.qmd` et `report/_descriptive.qmd` (étapes 3 et 3 bis).
@@ -132,7 +132,7 @@ Rédaction au fil de l'eau : à la fin de chaque étape d'analyse, la partie cor
   - Hors périmètre : modèles du cours ; aucune lecture des origines de test.
 
 - [ ] **Étape 9 : modèles du cours site par site**
-  - Objectif : lissage exponentiel simple, ETS et auto.arima sur le log des kWh par jour de chaque site, en validation. Repérer où auto.arima fonctionne mal (ordres dégénérés, différenciation causée par une rupture, résidus autocorrélés au test de Ljung-Box) et expliquer pourquoi.
+  - Objectif : lissage exponentiel simple, ETS et auto.arima sur le log des kWh par jour de chaque site, en validation. Deux variantes d'auto.arima, fixées dans `R/config.R` avant le lancement : réglages par défaut (différence saisonnière choisie par le test seas) et sans saison (D = 0) pour les sites ordinaires, la saison restant permise pour 0698BR. Le test par défaut demande une différence saisonnière pour 22 des 90 sites, le test OCSB pour 10, et ils divergent sur 20 (étape 3 bis) ; la validation les départage par la règle de sélection, pas un test. Repérer où auto.arima fonctionne mal (ordres dégénérés, différenciation causée par une rupture, résidus autocorrélés au test de Ljung-Box) et expliquer pourquoi.
   - Fichiers : `R/models.R`, `scripts/07_models.R`.
   - Vérification : temps d'exécution mesuré d'abord sur 5 sites ; tableau des erreurs de validation par méthode ; liste des sites où auto.arima échoue, avec le motif.
   - Hors périmètre : classes et variantes robustes.
