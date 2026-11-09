@@ -81,3 +81,53 @@ test_that("rolling centre isolates a one-month effect on a stable site", {
   expect_equal(a$dev[c(7, 19)], rep(log(1.1), 2))
   expect_equal(a$dev[-c(7, 19)], rep(0, 22))
 })
+
+test_that("effect_reproducibility keeps the sign of the relation", {
+  months <- seq(as.Date("2019-01-01"), by = "month", length.out = 24)
+  moy <- as.integer(format(months, "%m"))
+  sgn <- ifelse(months < as.Date("2020-01-01"), 1, -1)
+  # The site ranking of each month effect is reversed in the second year.
+  b <- do.call(rbind, lapply(1:3, function(k) {
+    data.frame(site = paste0("S", k), suffix = "BR", month = months,
+               kwh_per_day = exp(0.05 * k * sin(moy) * sgn))
+  }))
+  r <- effect_reproducibility(seasonal_deviation(b), 2019, 2020)
+  expect_equal(r$rho, rep(-1, 12))
+})
+
+test_that("max_level_shift dates steps at the first and last testable months", {
+  months <- format(seq(as.Date("2019-01-01"), by = "month", length.out = 30), "%Y-%m")
+  window <- 6
+  first <- window + 1
+  last <- 30 - window + 1
+  mat <- rbind(early = c(rep(0, first - 1), rep(log(2), 30 - first + 1)),
+               late = c(rep(0, last - 1), rep(log(2), 30 - last + 1)))
+  colnames(mat) <- months
+  s <- max_level_shift(mat, window)
+  expect_equal(s$shift_month, months[c(first, last)])
+  expect_equal(s$shift, rep(log(2), 2))
+  expect_error(max_level_shift(replace(mat, 1, NA), window), "Missing")
+})
+
+test_that("naive_errors skips the first month and months outside the list", {
+  b <- make_panel()
+  e <- naive_errors(b, as.Date(c("2019-01-01", "2019-02-01")))
+  expect_equal(nrow(e), 2)  # one per site, January has no previous bill
+  expect_true(all(e$month == as.Date("2019-02-01")))
+})
+
+test_that("rolling centre refuses unsorted bills and gaps", {
+  b <- make_panel()
+  expect_error(seasonal_deviation(b[nrow(b):1, ], centre = "rolling"), "sorted")
+  expect_error(seasonal_deviation(b[-5, ], centre = "rolling"), "gaps")
+})
+
+test_that("complete_years and grouped common_profile", {
+  b <- make_panel()
+  expect_equal(complete_years(b), c(2019L, 2020L))
+  expect_equal(complete_years(b[b$month < as.Date("2020-12-01"), ]), 2019L)
+  prof <- common_profile(seasonal_deviation(b), by = "suffix")
+  expect_equal(nrow(prof), 24)
+  expect_equal(prof$dev[prof$suffix == "BR" & prof$moy == 7], log(1.1))
+  expect_equal(prof$dev[prof$suffix == "KO"], rep(0, 12))
+})

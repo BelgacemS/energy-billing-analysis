@@ -47,8 +47,13 @@ save_fig(p, "levels")
 # treated apart.
 
 # ---- Month profile: raw kWh against kWh per calendar day -------------------
-dev_day <- seasonal_deviation(small_bills, "kwh_per_day")
+# Profiles use complete calendar years only: with the site-year median, the
+# 11 months of 2021 put an exact zero on one month per site.
+full_years <- complete_years(bills)
+dev_day_all <- seasonal_deviation(small_bills, "kwh_per_day")
+dev_day <- dev_day_all[dev_day_all$year %in% full_years, ]
 dev_raw <- seasonal_deviation(small_bills, "kwh")
+dev_raw <- dev_raw[dev_raw$year %in% full_years, ]
 profile <- rbind(
   transform(common_profile(dev_raw), unit = "kWh du mois"),
   transform(common_profile(dev_day), unit = "kWh par jour")
@@ -57,58 +62,92 @@ p <- ggplot(profile, aes(moy, ratio, colour = unit)) +
   geom_hline(yintercept = 1, colour = "grey70") +
   geom_line() + geom_point() +
   scale_x_continuous(breaks = 1:12, labels = month_labels) +
-  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+  scale_y_continuous(breaks = seq(0.9, 1.06, by = 0.02),
+                     labels = scales::label_percent(accuracy = 1)) +
   scale_colour_manual(values = c("grey55", "steelblue"), name = NULL) +
-  labs(x = NULL, y = "Rapport à la médiane annuelle du site (médiane des sites)")
+  labs(x = NULL, y = "Rapport à la médiane annuelle du site (médiane des sites)",
+       caption = "Sites ordinaires, années complètes 2019 et 2020.")
 save_fig(p, "month_profile")
-# Conclusion: in raw kWh the profile follows the length of the month (February
-# -9 %, April and November -2.5 %). Per calendar day it stays within 1 % of the
-# level except June to August (+1.4 to +2.3 %): the February effect is a calendar
-# effect and the only real seasonality is a small summer increase.
+# Conclusion: in raw kWh February is 9 % below the site's annual median and
+# the other months follow their length (April and November -2.7 % and -1.6 %,
+# July and August +3.7 % and +4.8 %). Per calendar day February is level with
+# January and March (-1.5 to -1.7 %): its dip is a calendar effect. What remains
+# is a small real seasonality, from -1.5 % in winter to +2.2 to +3.2 % in July
+# and August. Limit: the site-year median also absorbs part of the growth
+# within a year, which pushes early months down and late months up.
 
 # ---- Dispersion of the site-specific month effects -------------------------
 eff <- specific_effect(dev_day)
 site_eff <- stats::aggregate(effect ~ site + moy, eff, mean)
+eff_lim <- 0.25
+n_hidden <- sum(abs(exp(site_eff$effect) - 1) > eff_lim)
 p <- ggplot(site_eff, aes(factor(moy), exp(effect) - 1)) +
   geom_hline(yintercept = 0, colour = "grey70") +
   geom_boxplot(outlier.size = 0.6, fill = "grey90") +
   scale_x_discrete(labels = month_labels) +
   scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
-  coord_cartesian(ylim = c(-0.25, 0.25)) +
-  labs(x = NULL, y = "Effet propre du mois (écart au profil commun)")
+  coord_cartesian(ylim = c(-eff_lim, eff_lim)) +
+  labs(x = NULL, y = "Effet propre du mois (écart au profil commun)",
+       caption = sprintf("Moyenne 2019-2020 par site. %d valeurs sur %d hors de ±%d %% non affichées.",
+                         n_hidden, nrow(site_eff), round(100 * eff_lim)))
 save_fig(p, "month_effect_dispersion")
-# Conclusion: site-specific month effects are wider than the common profile
-# itself (IQR 3.5 %, tails beyond 20 %), with the widest spread in November and
-# December. Part of the tails comes from level changes within a year, not from
-# seasonality (see the reproducibility check below).
+# Conclusion: around the common profile, 90 % of the site-specific month
+# effects lie between -12 % and +14 %, about five times the amplitude of the
+# common profile itself (-1.7 % to +3.2 %). Part of the tails comes from level
+# changes within a year, not from seasonality (see the reproducibility check).
 
 # ---- Reproducibility of the site-specific month effect ---------------------
 # Robustness: same measure with a rolling 13-month level, less sensitive to
 # level changes within a year.
 dev_roll <- seasonal_deviation(small_bills, "kwh_per_day", centre = "rolling")
+# The 2020-2021 pair keeps the 11 months of 2021 (see seasonal_deviation).
 repro <- rbind(
-  transform(effect_reproducibility(dev_day, 2019, 2020), centre = "year"),
-  transform(effect_reproducibility(dev_day, 2020, 2021), centre = "year"),
+  transform(effect_reproducibility(dev_day_all, 2019, 2020), centre = "year"),
+  transform(effect_reproducibility(dev_day_all, 2020, 2021), centre = "year"),
   transform(effect_reproducibility(dev_roll, 2019, 2020), centre = "rolling"),
   transform(effect_reproducibility(dev_roll, 2020, 2021), centre = "rolling")
 )
+# Share of positive correlations, against 0 (Wilcoxon signed rank).
+repro_test <- do.call(rbind, lapply(split(repro, repro$centre), function(r) {
+  data.frame(centre = r$centre[1], n_pairs = nrow(r), n_positive = sum(r$rho > 0),
+             median_rho = median(r$rho), wilcoxon_p = stats::wilcox.test(r$rho)$p.value)
+}))
+dec_rho_test <- function(d) {
+  dd <- merge(d[d$year == 2019 & d$moy == 12, c("site", "dev")],
+              d[d$year == 2020 & d$moy == 12, c("site", "dev")], by = "site")
+  suppressWarnings(stats::cor.test(dd$dev.x, dd$dev.y, method = "spearman"))$p.value
+}
+dec_p <- c(year = dec_rho_test(dev_day_all), rolling = dec_rho_test(dev_roll))
+
+# Points beyond the frame are drawn on its edge as triangles, so none is lost.
 dec <- merge(eff[eff$year == 2019 & eff$moy == 12, c("site", "effect")],
              eff[eff$year == 2020 & eff$moy == 12, c("site", "effect")],
              by = "site", suffixes = c("_2019", "_2020"))
-p <- ggplot(dec, aes(exp(effect_2019) - 1, exp(effect_2020) - 1)) +
+dec_lim <- 0.2
+dec$x <- exp(dec$effect_2019) - 1
+dec$y <- exp(dec$effect_2020) - 1
+dec$edge <- abs(dec$x) > dec_lim | abs(dec$y) > dec_lim
+dec$x <- pmax(pmin(dec$x, dec_lim), -dec_lim)
+dec$y <- pmax(pmin(dec$y, dec_lim), -dec_lim)
+p <- ggplot(dec, aes(x, y, shape = edge)) +
   geom_hline(yintercept = 0, colour = "grey70") +
   geom_vline(xintercept = 0, colour = "grey70") +
   geom_point(colour = "steelblue", alpha = 0.8) +
+  scale_shape_manual(values = c(`FALSE` = 16, `TRUE` = 17), guide = "none") +
   scale_x_continuous(labels = scales::label_percent(accuracy = 1)) +
   scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
-  coord_cartesian(xlim = c(-0.15, 0.15), ylim = c(-0.15, 0.15)) +
-  labs(x = "Effet propre de décembre 2019", y = "Effet propre de décembre 2020")
+  labs(x = "Effet propre de décembre 2019", y = "Effet propre de décembre 2020",
+       caption = sprintf("%d sites sur %d au-delà de ±%d %%, ramenés au bord (triangles).",
+                         sum(dec$edge), nrow(dec), round(100 * dec_lim)))
 save_fig(p, "december_reproducibility", width = 5, height = 4.5)
-# Conclusion: a site's own December effect in 2019 says nothing about 2020
-# (Spearman rho -0.09, 0.24 with the rolling centre). Over all months, both
-# pairs of years and both centrings, rho stays between -0.32 and +0.40 (median
-# 0.06 and 0.12). A site's own month effect estimated on two years would be
-# mostly noise, so the month effect is shared across sites.
+# Conclusion: a site's own December effect barely carries over from 2019 to
+# 2020: Spearman rho -0.09 with the site-year centre, 0.24 (p = 0.02) with the
+# rolling centre. Over the 23 month pairs (2019-2020 and 2020-2021), rho stays
+# between -0.32 and +0.40, with a median of 0.06 (year) and 0.12 (rolling);
+# with the rolling centre 17 of 23 are positive (Wilcoxon p = 0.01). There is
+# a weak persistence, of the order of 0.1: a site's own month effect estimated
+# on two years would be mostly noise, so the month effect is shared across
+# sites (combined seasonal indices, Withycombe 1989).
 
 # ---- Growth 2019 to 2021 and level changes ---------------------------------
 growth <- site_growth(bills, 2019, 2021)
@@ -150,9 +189,10 @@ p <- ggplot(heat, aes(month, site, fill = dev_pct)) +
   labs(x = NULL, y = NULL) +
   theme(axis.text.y = element_text(size = 4), panel.grid = element_blank())
 save_fig(p, "heatmap", width = 7, height = 9)
-# Conclusion: most rows change colour in steps rather than gradually: 67 of the
-# 90 ordinary sites (74 %) have a level change above 10 % lasting several
-# months. The change months cluster (July and October 2019, May-June 2020),
+# Conclusion: most rows change colour in steps or fast drifts rather than
+# slowly: 67 of the 90 ordinary sites (74 %) have a level change above 10 %
+# between two 6-month windows (the measure does not separate a step from a
+# drift of about 2 % a month; step 5 does). The change months cluster (July and October 2019, May-June 2020),
 # which suggests network-wide events; July 2019 is also the first month the
 # 6-month window can test, so it collects earlier changes. Cases cited in the
 # subject show up: 1067KO (July 2019), 0254BB (end of 2019), 1088KO, 1978KO and
@@ -168,6 +208,11 @@ suffix_tab <- do.call(rbind, lapply(split(small_sites, small_sites$suffix), func
              share_level_change = mean(s$level_change),
              median_volatility = median(s$volatility))
 }))
+# With about 30 sites per suffix, differences are tested before being read.
+suffix_tests <- c(
+  level_change_fisher_p = stats::fisher.test(table(small_sites$suffix, small_sites$level_change))$p.value,
+  growth_kruskal_p = stats::kruskal.test(growth ~ factor(suffix), small_sites)$p.value
+)
 suffix_profile <- common_profile(dev_day, by = "suffix")
 p <- ggplot(suffix_profile, aes(moy, ratio, colour = suffix)) +
   geom_hline(yintercept = 1, colour = "grey70") +
@@ -176,10 +221,12 @@ p <- ggplot(suffix_profile, aes(moy, ratio, colour = suffix)) +
   scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
   labs(x = NULL, y = "kWh par jour, rapport à la médiane annuelle", colour = "Suffixe")
 save_fig(p, "suffix_profile")
-# Conclusion: the three suffixes share the same per-day profile (summer peak
-# +1.9 to +2.3 %, other months within 1 %) and close levels (median 1,942 to 2,582
-# kWh). KO grows more (+10 % against +5 to +7 %) and BR has more level changes
-# (83 % against 67 to 74 %). The suffix does not call for its own month effect.
+# Conclusion: the per-day profiles of the three suffixes stay within 2 points
+# of each other in every month (August peak +3.1 to +3.4 %) and their levels
+# are close (median 1,942 to 2,582 kWh). KO grows a little more (+10 % against +5
+# to +7 %) and BR has more level changes (83 % against 67 to 74 %), but neither
+# difference is significant with about 30 sites per suffix (Kruskal-Wallis
+# p = 0.35, Fisher p = 0.37). The suffix does not call for its own month effect.
 
 # ---- The two big sites -----------------------------------------------------
 big_bills <- bills[bills$site %in% big, ]
@@ -190,11 +237,15 @@ p <- ggplot(big_bills, aes(month, kwh_per_day)) +
   scale_x_date(date_breaks = "6 months", date_labels = "%m/%Y") +
   labs(x = NULL, y = "kWh par jour")
 save_fig(p, "big_sites")
-big_profile <- common_profile(seasonal_deviation(big_bills, "kwh_per_day"), by = "site")
-# Conclusion: 0698BR has a strong seasonality of its own (summer peak, winter
-# trough, about 20 % apart) on top of +30 % growth from 2019 to
-# 2021; 0998BR has no clear seasonality and drops about 7 % from May 2021.
-# Neither follows the common profile, so they keep their own seasonality.
+# Rolling centre: 0698BR grows fast, and a site-year median would turn its
+# growth into a January-to-December slope.
+big_profile <- common_profile(
+  seasonal_deviation(big_bills, "kwh_per_day", centre = "rolling"), by = "site")
+# Conclusion: 0698BR has a strong seasonality of its own, from -11 % in
+# December to +10 % in June around its rolling level (23 % between trough and
+# peak), on top of +30 % growth from 2019 to 2021. 0998BR has no clear
+# seasonality (within -3.4 % to +3 %) and drops about 7 % from May 2021. Neither
+# follows the common profile, so they keep their own seasonality.
 
 # ---- Naive forecast: raw kWh against kWh per day ---------------------------
 # Stops before the test period of the backtest, which is read only at step 11.
@@ -205,12 +256,15 @@ naive_tab <- data.frame(
   forecast = c("naive_raw", "naive_per_day"),
   median_rel_error = c(median(naive$err_raw), median(naive$err_per_day)),
   p90_rel_error = c(quantile(naive$err_raw, 0.9), quantile(naive$err_per_day, 0.9)),
-  share_per_day_better = c(NA, mean(naive$err_per_day < naive$err_raw))
+  share_per_day_better = c(NA, mean(naive$err_per_day < naive$err_raw)),
+  share_equal = c(NA, mean(naive$err_per_day == naive$err_raw)),
+  share_per_day_worse = c(NA, mean(naive$err_per_day > naive$err_raw))
 )
 # Conclusion: the per-day naive divides the median relative error by three
 # (1.2 % against 3.7 %, February 2019 to May 2021; 90th percentile 6.3 % against
-# 10.6 %) and beats the raw naive on 70 % of the bills: kWh per calendar day is
-# the right unit for forecasting.
+# 10.6 %). It is better on 70 % of the bills, equal on 14 % (two months of the
+# same length) and worse on 16 %: kWh per calendar day is the right unit for
+# forecasting.
 
 # ---- Saved tables and numbers for the report -------------------------------
 write.csv(sites, file.path(config$tables_dir, "site_summary.csv"), row.names = FALSE)
@@ -218,6 +272,8 @@ write.csv(profile, file.path(config$tables_dir, "month_profile.csv"), row.names 
 write.csv(suffix_tab, file.path(config$tables_dir, "suffix_summary.csv"), row.names = FALSE)
 write.csv(repro, file.path(config$tables_dir, "effect_reproducibility.csv"), row.names = FALSE)
 write.csv(naive_tab, file.path(config$tables_dir, "naive_raw_vs_per_day.csv"), row.names = FALSE)
+write.csv(suffix_profile, file.path(config$tables_dir, "suffix_profile.csv"), row.names = FALSE)
+write.csv(big_profile, file.path(config$tables_dir, "big_site_profile.csv"), row.names = FALSE)
 
 day_prof <- profile[profile$unit == "kWh par jour", ]
 raw_prof <- profile[profile$unit == "kWh du mois", ]
@@ -233,11 +289,16 @@ results <- list(
   feb_ratio_day      = day_prof$ratio[day_prof$moy == 2],
   summer_ratio_day   = mean(day_prof$ratio[day_prof$moy %in% 7:8]),
   profile_range_day  = range(day_prof$ratio),
+  profile_years      = full_years,
   site_effect_iqr    = stats::IQR(site_eff$effect),
+  site_effect_p05_p95 = stats::quantile(exp(site_eff$effect) - 1, c(0.05, 0.95)),
   repro_median_rho   = tapply(repro$rho, repro$centre, median),
   repro_range_rho    = range(repro$rho),
   repro_dec_rho      = setNames(repro$rho[repro$moy == 12 & repro$year1 == 2019],
                                 repro$centre[repro$moy == 12 & repro$year1 == 2019]),
+  repro_test         = repro_test,
+  repro_dec_p        = dec_p,
+  suffix_tests       = suffix_tests,
   share_level_change = mean(small_sites$level_change),
   n_level_change     = sum(small_sites$level_change),
   median_growth      = median(small_sites$growth),
