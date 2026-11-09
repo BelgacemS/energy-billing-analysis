@@ -2,7 +2,7 @@
 
 #' Parse kWh values written with a space as thousands separator ("2 500").
 parse_kwh <- function(x) {
-  cleaned <- gsub("[[:space:]  ]", "", x)
+  cleaned <- gsub("[[:space:]\u00a0\u202f]", "", x)
   out <- suppressWarnings(as.numeric(cleaned))
   bad <- is.na(out)
   if (any(bad)) {
@@ -27,7 +27,7 @@ days_in_month <- function(date) {
 #' a low value instead of being rescaled (irregular periods are handled by the
 #' checks of step 4).
 load_bills <- function(path) {
-  raw <- utils::read.csv(path, colClasses = "character", encoding = "UTF-8",
+  raw <- utils::read.csv(path, colClasses = "character", fileEncoding = "UTF-8",
                          check.names = FALSE)
   expected <- c("NAME", "BEGIN", "END", "KWH_PERIOD")
   missing_cols <- setdiff(expected, names(raw))
@@ -38,6 +38,10 @@ load_bills <- function(path) {
   begin <- as.Date(raw$BEGIN, format = "%d/%m/%Y")
   end <- as.Date(raw$END, format = "%d/%m/%Y")
   if (anyNA(begin) || anyNA(end)) stop("Unparsable dates in BEGIN or END")
+  # The billing month is taken from BEGIN, which assumes no bill spans two months.
+  if (any(format(begin, "%Y-%m") != format(end, "%Y-%m"))) {
+    stop("Bills spanning two calendar months: month assignment is ambiguous")
+  }
 
   site <- trimws(raw$NAME)
   month <- as.Date(format(begin, "%Y-%m-01"))

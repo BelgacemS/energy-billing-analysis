@@ -22,6 +22,9 @@ test_that("load_bills normalises a small hand-made file", {
   expect_equal(b$billed_days, c(31L, 16L, 28L))
   expect_equal(b$month_days, c(31L, 30L, 29L))
   expect_equal(b$kwh_per_day, c(100, 10, 40))
+
+  writeLines(c("NAME,BEGIN,END,KWH_PERIOD", "0001BR,15/01/2021,14/02/2021,900"), path)
+  expect_error(load_bills(path), "two calendar months")
 })
 
 test_that("log_kwh_matrix leaves NA for a missing month and rejects duplicates", {
