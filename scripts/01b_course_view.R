@@ -130,8 +130,9 @@ dev.off()
 # wanders, as for a random walk. After one difference the lag-1
 # autocorrelation is -0.07, far from the over-differencing sign of the course;
 # the largest autocorrelation is then at lag 12 (0.29), but below the 95 %
-# bound (0.34): a trace of the summer season, not significant on 34 points. For 1240BR the slow decay comes only
-# from the break: a difference there would model the break, not a trend.
+# bound (0.34): a trace of the summer season, not significant on 34 points.
+# For 1240BR the slow decay comes only from the break: a difference there
+# would model the break, not a trend.
 
 # ---- 5. STL decomposition, strength of trend and season --------------------
 for (s in c("total", big)) {
@@ -199,8 +200,9 @@ site_D_table <- table(seas = site_D$seas, ocsb = site_D$ocsb)
 # Conclusion: with its default test, auto.arima would difference seasonally
 # 22 of the 90 ordinary sites and OCSB 10; they ask for it together on 6 and
 # disagree on 20. Site by site, a seasonal difference would also copy each
-# site's own December 2020 effect, which does not repeat (step 3). The tests do not settle it: step 9 compares auto.arima with its
-# default and without season (D = 0) on the validation period.
+# site's own December 2020 effect, which does not repeat (step 3). The tests
+# do not settle it: step 9 compares auto.arima with its default and without
+# season (D = 0) on the validation period.
 
 # ---- Saved tables and numbers for the report -------------------------------
 write.csv(tests, file.path(config$tables_dir, "course_view_tests.csv"), row.names = FALSE)

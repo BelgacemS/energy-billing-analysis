@@ -85,7 +85,7 @@ Cette saison faible est commune aux sites. Les profils des trois suffixes ne dif
 fig("seasonplot_0698BR")
 ```
 
-Le gros site 0698BR fait exception (@fig-season-0698) : la même forme revient chaque année, un creux en hiver et un pic en juillet et août, décalée vers le haut par sa croissance. Sa composante saisonnière va de `r pct(cv$big_season[1, "0698BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0698BR"], signed = TRUE)` autour de la tendance (force `r num(row_of("0698BR")$season_strength, 2)`). Le second gros site, 0998BR, n'a pas de saison nette (`r pct(cv$big_season[1, "0998BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0998BR"], signed = TRUE)`). Les deux gros sites gardent donc leur propre traitement de la saison.
+Le gros site 0698BR fait exception (@fig-season-0698) : la même forme revient chaque année, un creux en hiver et un pic en juillet et août, décalée vers le haut par sa croissance. Sa composante saisonnière va de `r pct(cv$big_season[1, "0698BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0698BR"], signed = TRUE)` autour de la tendance (force `r num(row_of("0698BR")$season_strength, 2)`). Le second gros site, 0998BR, a une saison de faible amplitude (`r pct(cv$big_season[1, "0998BR"], signed = TRUE)` à `r pct(cv$big_season[2, "0998BR"], signed = TRUE)` autour de la tendance), dont la force (`r num(row_of("0998BR")$season_strength, 2)`) reste juste sous le seuil retenu par nsdiffs. Les deux gros sites gardent donc leur propre traitement de la saison.
 
 ## Stationnarité et autocorrélation
 
