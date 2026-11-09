@@ -75,7 +75,7 @@ Chemins et paramètres (seuils, pénalité, origines du backtest, règle de sél
   - Vérification : `Rscript run_all.R` affiche le nombre de lignes lues (3 220) ; `quarto render report/rapport.qmd` produit un PDF d'une page qui affiche ce nombre ; `git status` ne montre que des fichiers à versionner (le CSV de `data/` y figure, ni PDF du sujet ni sorties).
   - Hors périmètre : tout traitement des données.
 
-- [ ] **Étape 2 : charger et normaliser les données**
+- [x] **Étape 2 : charger et normaliser les données**
   - Objectif : table longue propre (site, suffixe, mois, début, fin, jours facturés, jours du mois, kWh, kWh/jour) et matrice 92 × 35 du log des kWh par jour calendaire.
   - Fichiers : `R/load.R`, `tests/testthat/test-load.R`.
   - Vérification : tests sur valeurs connues (0007BR janvier 2019 : 2 500 kWh, 31 jours ; 0628BR septembre 2021 : 16 jours facturés, 30 jours du mois) ; 92 sites × 35 mois, aucune valeur manquante après conversion du séparateur de milliers.
