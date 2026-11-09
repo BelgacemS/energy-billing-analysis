@@ -35,6 +35,7 @@ source("R/load.R")
 desc <- readRDS(file.path(config$results_dir, "descriptive.rds"))
 cv <- readRDS(file.path(config$results_dir, "course_view.rds"))
 res <- readRDS(file.path(config$results_dir, "baseline.rds"))
+pan <- readRDS(file.path(config$results_dir, "panel.rds"))
 n_small <- desc$n_sites - length(desc$big_sites)
 read_table <- function(name) read.csv(file.path(config$tables_dir, paste0(name, ".csv")))
 
