@@ -71,10 +71,11 @@ save_fig(p, "month_profile")
 # Conclusion: in raw kWh February is 9 % below the site's annual median and
 # the other months follow their length (April and November -2.7 % and -1.6 %,
 # July and August +3.7 % and +4.8 %). Per calendar day February is level with
-# January and March (-1.5 to -1.7 %): its dip is a calendar effect. What remains
-# is a small real seasonality, from -1.5 % in winter to +2.2 to +3.2 % in July
-# and August. Limit: the site-year median also absorbs part of the growth
-# within a year, which pushes early months down and late months up.
+# January and March (-1.5 to -1.7 %): its dip is a calendar effect. What
+# remains is a small real seasonality, from -1.5 to -1.7 % in winter to +2.2
+# to +3.2 % in July and August. Limit: the site-year median also absorbs part
+# of the growth within a year, which pushes early months down and late months
+# up.
 
 # ---- Dispersion of the site-specific month effects -------------------------
 eff <- specific_effect(dev_day)
@@ -192,9 +193,10 @@ save_fig(p, "heatmap", width = 7, height = 9)
 # Conclusion: most rows change colour in steps or fast drifts rather than
 # slowly: 67 of the 90 ordinary sites (74 %) have a level change above 10 %
 # between two 6-month windows (the measure does not separate a step from a
-# drift of about 2 % a month; step 5 does). The change months cluster (July and October 2019, May-June 2020),
-# which suggests network-wide events; July 2019 is also the first month the
-# 6-month window can test, so it collects earlier changes. Cases cited in the
+# drift of about 2 % a month; step 5 does). The change months cluster (July
+# and October 2019, May-June 2020), which suggests network-wide events; July
+# 2019 is also the first month the 6-month window can test, so it collects
+# earlier changes. Cases cited in the
 # subject show up: 1067KO (July 2019), 0254BB (end of 2019), 1088KO, 1978KO and
 # 1986KO (June 2020), plus 1037KO down from November 2020 and 1240BR down 95 %
 # from May 2021.
@@ -221,12 +223,13 @@ p <- ggplot(suffix_profile, aes(moy, ratio, colour = suffix)) +
   scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
   labs(x = NULL, y = "kWh par jour, rapport à la médiane annuelle", colour = "Suffixe")
 save_fig(p, "suffix_profile")
-# Conclusion: the per-day profiles of the three suffixes stay within 2 points
-# of each other in every month (August peak +3.1 to +3.4 %) and their levels
-# are close (median 1,942 to 2,582 kWh). KO grows a little more (+10 % against +5
-# to +7 %) and BR has more level changes (83 % against 67 to 74 %), but neither
-# difference is significant with about 30 sites per suffix (Kruskal-Wallis
-# p = 0.35, Fisher p = 0.37). The suffix does not call for its own month effect.
+# Conclusion: the per-day profiles of the three suffixes stay within about 2
+# points of each other in every month (August peak +3.1 to +3.4 %) and their
+# levels are close (median 1,942 to 2,582 kWh). KO grows a little more (+10 %
+# against +5 to +7 %) and BR has more level changes (83 % against 67 to 74 %),
+# but neither difference is significant with about 30 sites per suffix
+# (Kruskal-Wallis p = 0.35, Fisher p = 0.37). The suffix does not call for its
+# own month effect.
 
 # ---- The two big sites -----------------------------------------------------
 big_bills <- bills[bills$site %in% big, ]
