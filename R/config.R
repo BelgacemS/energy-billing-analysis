@@ -76,5 +76,54 @@ config <- list(
   synthetic_step_sizes    = c(1, 2, 3),
   synthetic_spike_sizes   = c(3, 5, 8),
   synthetic_step_month    = 21,   # first month of the new level
-  synthetic_anomaly_month = 15
+  synthetic_anomaly_month = 15,
+
+  # Typology of the flagged bills (step 6). Rules written before the first
+  # run, from the step 5 outputs only. A bill is flagged when its period is
+  # irregular (step 4 check), when it lies more than segment_K noise units from
+  # its plateau (excursion), or when it is the first month of a plateau that
+  # differs by more than level_shift_min from the previous one. Breaks of
+  # level_shift_min or less are ignored until step 7: plateaus separated only
+  # by such breaks count as one level.
+  # Episodes: runs of consecutive excursion months, merged when separated by at
+  # most merge_gap_months normal months. Types, in order of precedence:
+  # irregular period; indeterminate (episode reaching the last edge_months
+  # months); transition (episode touching a break, ending at most one month
+  # before it, all months between the old and the new level within segment_K
+  # noise units: a ramp, shown but not suspect); compensated pair (bills below
+  # and above, in either order and possibly more than two, |sum billed - sum
+  # expected| / sum expected within pair_tolerance at the level before or after
+  # the episode: a billing error corrected later; its net gap is taken at the
+  # closer of the two levels); then for each
+  # run: point (1 month, back to the same level), implausible (a point billed
+  # above implausible_ratio or below 1 / implausible_ratio times the expected
+  # value), temporary (2 to temporary_max_months months of the same sign, back
+  # to the same level; longer runs that come back stay temporary, so the cap
+  # does not change the type: it is only a readability guard, checked by
+  # scripts/04_suspects.R, and no step 5 run exceeds it), indeterminate
+  # otherwise. A break is a lasting change (its cumulative gap at the old level
+  # starts with the transition that leads to it, if any), a probable network
+  # change when shared (not suspect), or indeterminate in the last edge_months
+  # months.
+  # Shared break, against chance (same logic as check_repeats): for each
+  # direction, lambda = number of breaks above level_shift_min of the ordinary
+  # sites / number of testable months (months where a new plateau can start
+  # given plateau_min_months: months plateau_min_months + 1 to n -
+  # plateau_min_months + 1, 30 of 35). A month is shared in a direction when
+  # its n breaks satisfy P(X >= n) < shared_break_alpha, X ~ Poisson(lambda),
+  # and n >= shared_break_min_sites. At least 3 sites in the same month
+  # matched chance (about 7 months expected, 7 observed).
+  pair_tolerance       = 0.10,
+  implausible_ratio    = 3,
+  shared_break_min_sites = 3,
+  shared_break_alpha   = 0.05,
+  edge_months          = 3,   # first and last months, where a plateau is less reliable
+  merge_gap_months     = 1,
+  temporary_max_months = 4,
+  # Confidence: high for an irregular period (deterministic check); otherwise
+  # high when |z| >= high_confidence_z outside the edge months and outside a
+  # shared break, low in the edge months, medium otherwise. The
+  # range of a gap is billed - expected x exp(+-range_sigmas x noise).
+  high_confidence_z    = 6,
+  range_sigmas         = 2
 )
