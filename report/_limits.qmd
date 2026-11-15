@@ -25,4 +25,4 @@ l_acc <- function(scope, method) l_ta$mase[l_ta$scope == scope & l_ta$method == 
 - Faire vérifier la liste priorisée par le service facturation, en commençant par les lignes de confiance élevée, et faire confirmer les changements durables par les responsables des sites. Leurs retours donneraient un vrai taux d'erreur et permettraient d'ajuster les seuils.
 - Obtenir les tarifs appliqués à chaque site, pour chiffrer les écarts et les changements durables en euros.
 - Pour la prévision, utiliser la règle simple (consommation par jour du dernier mois), la recalculer chaque mois et suivre de près les sites peu fiables, en particulier ceux dont la dernière facture est ambiguë.
-- Relancer l'analyse chaque mois avec les nouvelles factures : l'ensemble des résultats se régénère automatiquement, et chaque mois supplémentaire améliore l'estimation de l'effet du mois.
+- Mettre à jour l'analyse chaque mois avec les nouvelles factures : la chaîne de calcul est reproductible, seuls le mois à prévoir et les périodes de validation et de test sont à avancer, et chaque mois supplémentaire améliore l'estimation de l'effet du mois.

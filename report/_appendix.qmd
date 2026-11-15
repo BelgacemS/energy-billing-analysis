@@ -7,7 +7,7 @@ Lignes suspectes des sites ordinaires, classées par confiance puis par écart a
 ```{r}
 #| label: tbl-suspects-all
 #| tbl-cap: "Lignes suspectes des sites ordinaires (kWh)."
-#| tbl-colwidths: [10, 10, 15, 11, 11, 10, 6, 15, 12]
+#| tbl-colwidths: [9, 9, 13, 9, 9, 9, 6, 24, 12]
 all_sus <- sus$flagged[!sus$flagged$big & sus$flagged$suspect, ]
 ta_all <- tab_sus(all_sus)
 ta_all$Confiance <- clab(all_sus$confidence)
