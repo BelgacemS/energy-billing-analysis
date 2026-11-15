@@ -148,7 +148,7 @@ config <- list(
   validation_start    = as.Date("2020-07-01"),
   selection_tolerance = 0.02,
   method_order = c("naive_per_day", "naive_raw", "snaive_per_day", "ses", "ets",
-                   "arima_noseason", "arima"),
+                   "arima_noseason", "arima", "naive_adj", "robust_level", "combination"),
 
   # Course models (step 9), fitted site by site at each origin on log kWh per
   # calendar day (monthly ts). The one-step forecast is exp(log forecast) x
@@ -237,5 +237,38 @@ config <- list(
   calibration_episode_sizes  = c(0.05, 0.10, 0.20, 0.40),  # pair needs 2a < 1
   calibration_episode_months = 3,
   calibration_break_window   = 1,
-  hampel_thresholds       = c(3, 4, 5, 6, 8)
+  hampel_thresholds       = c(3, 4, 5, 6, 8),
+
+  # Classes and selection (step 10), rules written before the first run.
+  # Classes of the ordinary sites by Ward clustering (hclust "ward.D2",
+  # Euclidean distance on standardised features) on the months before
+  # validation_start only, so the classes use no validation or test month.
+  # Features of log kWh per day minus the month effect: median level, OLS
+  # slope per year, log noise scale (step 5), number of breaks above
+  # level_shift_min (segmentation of R/config.R). Number of classes: highest
+  # mean silhouette over class_k_range, the smaller k on a tie. The two big
+  # sites form their own class.
+  # Extra candidates, refitted at each origin on the bills up to the origin
+  # (preprocessing of the backtest): month effect = median over the ordinary
+  # sites (each big site its own) of the deviation from the site's median of
+  # each complete calendar year (the decomposition trend of step 5 needs more
+  # months than the first origins have). Added after the first run, which
+  # stopped: with one complete year a big site's own effect copies its data,
+  # so the big sites take the common effect until two years are complete.
+  # - naive_adj: per-day naive corrected by the month effect, last log kWh
+  #   per day - effect of its month + effect of the target month;
+  # - robust_level: months off their plateau replaced by the plateau level
+  #   (segmentation of R/config.R on log kWh per day minus the month effect),
+  #   simple exponential smoothing of that cleaned series from the start of
+  #   the last plateau after a break above level_shift_min, plus the month
+  #   effect of the target month; the last cleaned value if the fit fails;
+  # - combination: mean of the kWh forecasts of combination_methods (equal
+  #   weights, Bates and Granger, 1969), chosen before the run: the per-day
+  #   naive and the two candidates above.
+  # Selection rule of step 8 (method_order, selection_tolerance) applied to
+  # the mean validation MASE of each class, over the per-day naive and the
+  # step 9 and step 10 methods (the raw and seasonal naives, far behind at
+  # step 8, are left out).
+  class_k_range       = 2:6,
+  combination_methods = c("naive_per_day", "naive_adj", "robust_level")
 )

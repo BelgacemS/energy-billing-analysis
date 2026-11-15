@@ -147,7 +147,60 @@ auto.arima a été examiné site par site sur les factures `r de(pre_first)` à 
 - **différenciation liée aux ruptures** : pour `r sum(dg$break_diff)` sites, la différenciation choisie disparaît quand on retire les changements de niveau de plus de `r pct(config$level_shift_min)` repérés par la segmentation. Le modèle traite alors chaque rupture comme un choc permanent, ce que fait aussi la naïve. Ce critère ne distingue pas une rupture d'une marche aléatoire, que la segmentation découpe aussi en paliers. Sur des marches aléatoires simulées pour chaque site, il signalerait en moyenne `r num(null_exp[["gaussian_mad"]], 0)` sites avec des accroissements gaussiens à l'échelle du bruit habituel du site, qui ne produisent presque jamais de grand saut, et `r num(null_exp[["bootstrap"]], 0)` avec les accroissements du site lui-même, tirés au hasard, qui comptent ses vrais sauts comme des variations ordinaires. Selon la référence, le nombre observé est donc très au-dessus ou proche du hasard : le critère ne permet pas de dire combien de différenciations sont dues aux ruptures ;
 - **résidus autocorrélés** (test de Ljung-Box au seuil de `r pct(mo$config$ljung_box_alpha)`) : `r sum(dg$lb_reject)` sites. Sur `r mo$n_pre_months` mois, le test ne porte que sur `r mo$lb_lag` décalages et détecte peu.
 
-Au moins un de ces signes touche `r n_flag` des `r mo$n_ordinary` sites, dont `r n_rw_only` seulement parce que le modèle retenu est la naïve elle-même. Ils ne séparent que faiblement les sites où auto.arima se dégrade : son erreur vaut `r num(ratio(TRUE), 2)` fois celle de la naïve sur les sites signalés, contre `r num(ratio(FALSE), 2)` fois sur les autres. Même sur ces derniers, il ne fait pas mieux que la naïve : ajusté automatiquement sur `r num(years_pre, 1)` ans de factures coupées de ruptures, il apprend peu de chose que la naïve ne capte déjà. Appliquée à l'ensemble des sites ordinaires, la règle de choix retient la naïve par jour. Le choix définitif se fait par groupe de sites, avec des variantes qui tiennent compte des ruptures, dans la partie suivante.
+Au moins un de ces signes touche `r n_flag` des `r mo$n_ordinary` sites, dont `r n_rw_only` seulement parce que le modèle retenu est la naïve elle-même. Ils ne séparent que faiblement les sites où auto.arima se dégrade : son erreur vaut `r num(ratio(TRUE), 2)` fois celle de la naïve sur les sites signalés, contre `r num(ratio(FALSE), 2)` fois sur les autres. Même sur ces derniers, il ne fait pas mieux que la naïve : ajusté automatiquement sur `r num(years_pre, 1)` ans de factures coupées de ruptures, il apprend peu de chose que la naïve ne capte déjà. Appliquée à l'ensemble des sites ordinaires, la règle de choix retient la naïve par jour. Le choix définitif se fait par groupe de sites, avec des variantes qui tiennent compte des ruptures, dans la section suivante.
+
+## Choix de la méthode par groupe de sites
+
+```{r}
+#| include: false
+sp <- sel$profile
+ssel <- sel$selection
+k_ord <- sel$k
+sil <- sel$silhouette
+smase <- sel$ordinary_mase
+lab <- function(m) tolower(sel$labels[[m]])
+grp <- function(k) if (k == "big") "gros sites" else paste("groupe", k)
+sb <- sel$backtest[sel$backtest$class != "big", ]
+rw <- merge(sb[sb$method == "robust_level", c("site", "month", "scaled_error", "forecast", "billed")],
+            sb[sb$method == "naive_per_day", c("site", "month", "scaled_error")],
+            by = c("site", "month"), suffixes = c("", "_naive"))
+rw_better <- mean(rw$scaled_error < rw$scaled_error_naive)
+rw_worst <- rw[which.max(rw$scaled_error - rw$scaled_error_naive), ]
+ord_sel <- ssel[ssel$class != "big", ]
+other <- ord_sel[ord_sel$chosen != "naive_per_day", ]
+big_sel <- ssel[ssel$class == "big", ]
+```
+
+La règle de choix s'applique par groupe de sites et non site par site : 11 mois de validation par site sont trop peu. Les `r mo$n_ordinary` sites ordinaires sont regroupés par classification hiérarchique (méthode de Ward) selon quatre caractéristiques de leur série corrigée de l'effet du mois : niveau, pente, bruit habituel et nombre de ruptures de plus de `r pct(config$level_shift_min)`. Elles sont mesurées sur les mois qui précèdent la validation, `r de(pre_first)` à `r mname(seq(config$validation_start, by = "-1 month", length.out = 2)[2])`, pour qu'aucun mois servant aux choix n'entre dans les groupes. Le nombre de groupes, `r k_ord`, est celui qui donne la meilleure silhouette moyenne entre `r min(as.integer(names(sil)))` et `r max(as.integer(names(sil)))` groupes. Elle reste faible (`r num(max(sil), 2)`, sur une échelle de −1 à 1) : les groupes découpent un ensemble assez continu plus qu'ils ne séparent des comportements tranchés. Les deux gros sites forment un groupe à part. Le suffixe du nom n'est pas lié aux groupes (test exact de Fisher, p = `r num(sel$suffix_p, 2)`).
+
+```{r}
+#| label: tbl-classes
+#| tbl-cap: "Groupes de sites ordinaires (valeurs médianes sur les mois avant la validation)."
+#| tbl-colwidths: [9, 8, 13, 13, 11, 14, 32]
+knitr::kable(data.frame(Groupe = sp$class, Sites = sp$n, `kWh par jour` = num(sp$level_kwh_day),
+                        `Pente par an` = pct(sp$slope, 0, signed = TRUE),
+                        Bruit = pct(sp$noise, 1), `Avec rupture` = pct(sp$share_break),
+                        Exemples = sp$examples, check.names = FALSE),
+             align = "lrrrrrl")
+```
+
+Trois candidats s'ajoutent aux méthodes précédentes, recalculés à chaque origine avec les seules factures disponibles. La **naïve corrigée du mois** reprend la dernière consommation par jour et la ramène au mois à prévoir par l'effet commun du mois. Le **niveau robuste** lisse, par lissage exponentiel simple, le dernier palier du site, après avoir remplacé les factures hors palier par leur palier. La **combinaison** est la moyenne simple de ces deux prévisions et de la naïve par jour (Bates et Granger, 1969). L'effet du mois y est estimé sur les années civiles complètes : la moyenne mobile de la partie Q1 demande plus de mois que n'en ont les premières origines.
+
+```{r}
+#| label: tbl-select
+#| tbl-cap: "MASE moyenne de validation par méthode et par groupe (en gras : méthode retenue par la règle)."
+m <- sel$mase[c(setdiff(rownames(sel$mase), "big"), "big"), names(sel$labels)]  # (groups, methods)
+cell <- matrix(num(m, 2), nrow(m), dimnames = dimnames(m))
+cell[cbind(ssel$class, ssel$chosen)[match(rownames(m), ssel$class), , drop = FALSE]] <-
+  paste0("**", cell[cbind(ssel$class, ssel$chosen)[match(rownames(m), ssel$class), , drop = FALSE]], "**")
+tab <- data.frame(`Méthode` = unname(sel$labels), t(cell), check.names = FALSE)
+names(tab)[-1] <- ifelse(rownames(m) == "big", "Gros sites", rownames(m))
+knitr::kable(tab, align = paste0("l", strrep("r", nrow(m))), row.names = FALSE)
+```
+
+Sur l'ensemble des sites ordinaires, la naïve par jour reste la meilleure (MASE `r num(smase[["naive_per_day"]], 2)`), devant la `r lab("naive_adj")` (`r num(smase[["naive_adj"]], 2)`) et la combinaison (`r num(smase[["combination"]], 2)`). Corriger l'effet du mois n'aide pas : l'effet est faible et n'est estimé que sur une ou deux années. Le niveau robuste est le moins bon des trois candidats (`r num(smase[["robust_level"]], 2)`) et ne bat la naïve que sur `r pct(rw_better)` des factures. Il perd surtout juste après un changement de niveau, dont les premiers mois sont hors palier, donc neutralisés : la prévision reste sur l'ancien niveau (`r rw_worst$site` en `r mname(rw_worst$month)` : `r num(rw_worst$forecast)` kWh prévus pour `r num(rw_worst$billed)` facturés). Neutraliser un écart ponctuel suppose de savoir qu'il est ponctuel, ce que la dernière facture ne dit pas encore.
+
+Groupe par groupe, la règle retient la naïve par jour pour `r sum(ord_sel$chosen == "naive_per_day")` des `r nrow(ord_sel)` groupes ordinaires. `r if (nrow(other) > 0) paste0("Exception : ", paste0("le ", grp(other$class), " (", sp$n[match(other$class, sp$class)], " sites), où la ", sapply(other$chosen, lab), " fait ", num(other$chosen_mase, 3), " contre ", num(other$naive_mase, 3), " pour la naïve, soit ", pct(1 - other$chosen_mase / other$naive_mase, 1), " de moins, juste au-delà de la tolérance de ", pct(config$selection_tolerance), collapse = " ; "), ". Sur si peu de sites et 11 mois, un tel écart est fragile.") else ""` Pour les gros sites, elle retient `r lab(big_sel$chosen)` (`r num(big_sel$chosen_mase, 2)` contre `r num(big_sel$naive_mase, 2)` pour la naïve), sur deux sites seulement. Ces choix sont évalués une seule fois, sur les mois de test, dans la partie suivante.
 
 ## Prévision de décembre 2021 (première version)
 
