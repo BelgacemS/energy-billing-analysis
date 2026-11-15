@@ -2,6 +2,9 @@
 # given, so the expected type of each flagged bill is known.
 n_months <- 35
 base <- log(100)
+# The fixtures are written in noise units for K = 3, whatever the calibrated K.
+cfg3 <- config
+cfg3$segment_K <- 3
 
 make_site <- function(site, level = rep(base, n_months), dev = numeric(n_months),
                       sigma = 0.01) {
@@ -11,7 +14,7 @@ make_site <- function(site, level = rep(base, n_months), dev = numeric(n_months)
   data.frame(site = site, suffix = "BR", group = "common", month = month,
              kwh = exp(y) * days, month_days = days, x = y, effect = 0, y = y,
              plateau = cumsum(c(1, diff(level) != 0)), level = level,
-             excursion = abs(dev) > config$segment_K, sigma = sigma, expected_log = level,
+             excursion = abs(dev) > cfg3$segment_K, sigma = sigma, expected_log = level,
              expected_kwh = exp(level) * days, gap_kwh = exp(y) * days - exp(level) * days,
              resid = dev * sigma, z = dev, stringsAsFactors = FALSE)
 }
@@ -28,7 +31,7 @@ make_breaks <- function(p) {
 }
 no_periods <- data.frame(site = character(), month = as.Date(character()))
 classify <- function(p, periods = no_periods, big = character()) {
-  classify_bills(p, make_breaks(p), periods, big, config)
+  classify_bills(p, make_breaks(p), periods, big, cfg3)
 }
 step_level <- function(at, change) c(rep(base, at - 1), rep(base + log(1 + change), n_months - at + 1))
 

@@ -26,6 +26,40 @@ biweight_fit <- function(z, K) {
   list(cost = cost[best], level = mu[best])
 }
 
+#' Biweight cost of every segment z[k:e], same values as biweight_fit, in one
+#' vectorised pass (biweight_fit called n^2 / 2 times was too slow for the
+#' calibration of step 7). The breakpoints z_i +- K of the whole series refine
+#' those of each segment, so on each of their intervals the set of points
+#' within K of mu is fixed for every segment, and the clamped mean of that set
+#' minimises the segment cost there. Running sums give the count, sum and sum
+#' of squares of the set for all segments at once. Returns an (n, n) matrix,
+#' cost[k, e] for k <= e, NA below the diagonal.
+biweight_costs <- function(z, K) {
+  n <- length(z)
+  z <- z - stats::median(z)  # costs are shift invariant; centring limits cancellation
+  bp <- sort(unique(c(z - K, z + K)))
+  lo <- bp[-length(bp)]
+  hi <- bp[-1]
+  inl <- abs(outer(z, (lo + hi) / 2, "-")) < K  # (points, intervals)
+  run <- function(w) rbind(0, apply(inl * w, 2, cumsum))  # (n + 1, intervals)
+  cn <- run(1)
+  s1 <- run(z)
+  s2 <- run(z^2)
+  seg <- which(upper.tri(diag(n), diag = TRUE), arr.ind = TRUE)  # (segments, 2): k, e
+  k <- seg[, 1]
+  e <- seg[, 2]
+  m <- cn[e + 1, , drop = FALSE] - cn[k, , drop = FALSE]  # (segments, intervals)
+  s <- s1[e + 1, , drop = FALSE] - s1[k, , drop = FALSE]
+  ss <- s2[e + 1, , drop = FALSE] - s2[k, , drop = FALSE]
+  lo_m <- matrix(lo, nrow(m), ncol(m), byrow = TRUE)
+  mu <- pmin(pmax(s / pmax(m, 1), lo_m), matrix(hi, nrow(m), ncol(m), byrow = TRUE))
+  cost <- ss - 2 * mu * s + m * mu^2 + (e - k + 1 - m) * K^2
+  cost[m == 0] <- Inf
+  out <- matrix(NA_real_, n, n)
+  out[seg] <- apply(cost, 1, min)
+  out
+}
+
 #' Optimal partitioning (exact dynamic programming) with the biweight cost:
 #' minimises sum over segments of their biweight cost + penalty per segment,
 #' with segments of at least `minseglen` points. Returns the end index of
@@ -40,12 +74,13 @@ biweight_fit <- function(z, K) {
 biweight_partition <- function(z, K, penalty, minseglen = 1, tol = 1e-9) {
   n <- length(z)
   if (n < 2 * minseglen) return(n)
+  cost <- biweight_costs(z, K)  # (n, n)
   best <- c(0, rep(Inf, n))  # best[e + 1]: optimal cost of z[1:e]
   start <- integer(n)        # first point of the last segment of z[1:e]
   for (e in seq(minseglen, n)) {
     s <- seq_len(e - minseglen + 1)
     s <- s[s == 1 | s > minseglen]  # the previous segment must be long enough
-    cand <- vapply(s, function(k) best[k] + biweight_fit(z[k:e], K)$cost + penalty, numeric(1))
+    cand <- best[s] + cost[s, e] + penalty
     best[e + 1] <- min(cand)
     start[e] <- s[which(cand <= best[e + 1] + tol * max(1, abs(best[e + 1])))[1]]
   }
@@ -56,9 +91,10 @@ biweight_partition <- function(z, K, penalty, minseglen = 1, tol = 1e-9) {
 
 #' End index of each segment of a standardised series (the last is length(z)).
 #'
-#' "biweight": biweight_partition with penalty 3 log(n) per change, the
-#' penalty value of changepoint's MBIC for a change in mean, without the
-#' log(segment length) terms its MBIC cost adds. "normal" (cpt.mean, which assumes
+#' "biweight": biweight_partition with penalty beta log(n) per change; penalty
+#' "MBIC" is beta = 3, the penalty value of changepoint's MBIC for a change in
+#' mean, without the log(segment length) terms its MBIC cost adds, and a number
+#' gives beta (step 7 calibration). "normal" (cpt.mean, which assumes
 #' unit variance) and "np" (cpt.np, scale free) are kept for comparison; both
 #' return the last observation of each segment (checked on a clean step, the
 #' cpt.np help says otherwise) and fail when n < 2 * minseglen, where no change
@@ -69,8 +105,9 @@ find_changepoints <- function(z, cost = c("biweight", "normal", "np"), penalty =
   n <- length(z)
   if (n < 2 * minseglen) return(n)
   if (cost == "biweight") {
-    if (penalty != "MBIC") stop("Only the MBIC penalty is implemented for the biweight cost")
-    return(biweight_partition(z, K, 3 * log(n), minseglen))
+    beta <- if (identical(penalty, "MBIC")) 3 else if (is.numeric(penalty)) penalty else
+      stop("The biweight penalty is \"MBIC\" or a number beta (beta log n per change)")
+    return(biweight_partition(z, K, beta * log(n), minseglen))
   }
   fit <- if (cost == "normal") {
     changepoint::cpt.mean(z, penalty = penalty, method = "PELT",

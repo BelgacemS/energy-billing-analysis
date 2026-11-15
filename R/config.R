@@ -46,8 +46,8 @@ config <- list(
   # the forecast package).
   nsdiffs_seas_threshold = 0.64,
 
-  # Panel and segmentation (step 5). Provisional values: penalty and cost are
-  # chosen at step 7 by anomaly injection.
+  # Panel and segmentation (step 5). K and the penalty were set by the
+  # calibration of step 7 (scripts/05_calibrate.R checks they match its rule).
   # Month effect: median deviation from the centred 2x12 moving average (trend
   # of decompose), shared by the ordinary sites; each big site keeps its own
   # (step 3).
@@ -64,7 +64,7 @@ config <- list(
   # the synthetic comparison.
   segment_cost       = "biweight",
   segment_penalty    = "MBIC",
-  segment_K          = 3,         # outlier threshold, in noise units
+  segment_K          = 6,         # outlier threshold, in noise units (3 until step 7)
   plateau_min_months = 3,         # a plateau lasts at least a quarter
   segment_nquantiles = 10,        # cpt.np default
   # Synthetic check of the three costs (step 5): 35 months, unit noise
@@ -187,5 +187,55 @@ config <- list(
   # breaks) and its own increments resampled with replacement (the jumps of
   # real breaks count as ordinary increments, so too many).
   break_null_reps = 10,
-  break_null_seed = 2021
+  break_null_seed = 2021,
+
+  # Calibration by anomaly injection (step 7), rule written before the first
+  # run. Simulated panels of the 90 ordinary sites: for each site, levels
+  # between its breaks above level_shift_min and month effect from the
+  # reference segmentation (the step 5 settings below), plus its residuals
+  # around those levels (months off their plateau left out, as they may be
+  # real anomalies) resampled in moving blocks of calibration_block months.
+  # Only breaks above level_shift_min are true breaks: the smaller ones are
+  # what the calibration has to judge, so they stay in the residuals, whose
+  # lag-1 autocorrelation is then about 0.75 (0.09 at lag 5, hence 6-month
+  # blocks). Each replication draws one panel per seed (calibration_seed +
+  # replication) and one start month per site, shared by every anomaly and
+  # setting (common random numbers); the anomaly is injected in every site,
+  # outside the first and last edge_months months. Anomalies, multiplying the
+  # bills: spike (1 month x (1 + a) or / (1 + a)), temporary gap
+  # (calibration_episode_months months, same factor), compensated pair (two
+  # months x (1 - a) then one x (1 + 2a), or the reverse order), level break
+  # (x (1 + a) or / (1 + a) from the start month on).
+  # Measures, for each setting (K, beta: penalty beta log n per change):
+  # - false alert rate: suspect rows of the background panel (no injection)
+  #   that are not one of its true breaks found within calibration_break_window
+  #   months in the same direction, over the number of bills;
+  # - detection: spike, temporary gap and pair found when one of their months
+  #   is a suspect row; break found when a break row above level_shift_min
+  #   lies within calibration_break_window months, same direction;
+  # - typology: share of detections with the injected type (break: lasting
+  #   or network change).
+  # Rule: among the settings whose false alert rate is at most
+  # calibration_fa_max, the highest score, score = mean of the mean detection
+  # over the spike cells and the mean over the break cells (sizes and both
+  # signs, equal weight); scores within calibration_tie of the best are tied
+  # and the lowest false alert rate wins. If no setting is admissible, the
+  # lowest false alert rate. Temporary gaps and pairs are measured at the
+  # chosen setting only. Hampel (step 4) runs on the same panels for each of
+  # hampel_thresholds; it is compared at its default threshold and at the
+  # smallest threshold whose false alert rate does not exceed the panel's.
+  calibration_reference   = list(K = 3, penalty = "MBIC"),
+  calibration_K           = c(2.5, 3, 4, 5, 6),
+  calibration_beta        = c(3, 5, 8, 12),
+  calibration_reps        = 20,
+  calibration_seed        = 2021,
+  calibration_block       = 6,
+  calibration_fa_max      = 0.01,
+  calibration_tie         = 0.005,
+  calibration_spike_sizes = c(0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1.00),
+  calibration_break_sizes = c(0.05, 0.10, 0.20, 0.50, 1.00),
+  calibration_episode_sizes  = c(0.05, 0.10, 0.20, 0.40),  # pair needs 2a < 1
+  calibration_episode_months = 3,
+  calibration_break_window   = 1,
+  hampel_thresholds       = c(3, 4, 5, 6, 8)
 )

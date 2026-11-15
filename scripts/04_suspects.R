@@ -105,18 +105,17 @@ p <- ggplot(counts, aes(n, type, fill = confidence)) +
        caption = "Sites ordinaires. Transition et probable changement réseau : affichés, non suspects.") +
   theme(legend.position = "bottom")
 save_fig(p, "suspects_by_type")
-# Conclusion: on the 90 ordinary sites, 307 rows (bills and breaks) on 87
-# sites; 229 are suspect (225 distinct bills), on 83 sites, 103 of them in
-# high confidence: 73 point gaps, 56 lasting changes, 52 bills in 24
-# temporary gaps, 25 indeterminate, 21 bills in 7 compensated pairs (6 start
-# with the bill too high), 2 irregular periods and no implausible value. The
-# other 78 rows are shown but not suspect: 54 ramp bills between two levels
-# (transitions) and 24 breaks in the 4 month-directions that beat chance
-# (April 2019 down, October and November 2019 and April 2020 up; probable
-# network changes). The suspect bills sum to +25,974 kWh above and 12,924 kWh
-# below the expected value; the lasting changes add +345,216 and -223,568 kWh
-# from their start (ramp included), each month counted once, more likely
-# equipment changes than billing errors.
+# Conclusion (K = 6 from step 7): on the 90 ordinary sites, 168 rows (bills
+# and breaks) on 71 sites; 112 are suspect (109 distinct bills) on 59 sites,
+# 80 of them in high confidence: 62 lasting changes, 20 point gaps, 14
+# indeterminate, 10 temporary bills, 4 bills in 2 compensated pairs, 2
+# irregular periods, no implausible value. The other 56 rows are shown but
+# not suspect: 27 ramp bills (transitions) and 29 breaks in the 5
+# month-directions that beat chance (April 2019 down; August, October and
+# November 2019 and April 2020 up). The big sites have no suspect row. The
+# suspect bills sum to +10,705 kWh above and -7,276 kWh below the expected
+# value; the lasting changes add +310,804 and -292,325 kWh from their start,
+# more likely equipment changes than billing errors.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(small, file.path(config$tables_dir, "suspects.csv"), row.names = FALSE)
