@@ -125,5 +125,28 @@ config <- list(
   # shared break, low in the edge months, medium otherwise. The
   # range of a gap is billed - expected x exp(+-range_sigmas x noise).
   high_confidence_z    = 6,
-  range_sigmas         = 2
+  range_sigmas         = 2,
+
+  # Backtest (step 8). Rolling origin, one month ahead: the forecast of month
+  # t uses the bills up to t - 1 only, and any preprocessing is refitted at
+  # each origin. Validation targets run from validation_start to the month
+  # before test_start (July 2020 to May 2021, 11 forecasts per site, December
+  # 2020 included); the test targets (June to November 2021) are read once,
+  # at step 11.
+  # Error of a forecast: e = billed - forecast, in kWh. MASE (Hyndman and
+  # Koehler, 2006): |e| / mean |e| of the per-day naive forecast over the
+  # bills available at the origin (one-step, in sample), so it is free of
+  # scale across sites and the per-day naive sits near 1.
+  # Selection rule, written before any model is run: lowest mean validation
+  # MASE; among the methods less than selection_tolerance (relative) above
+  # that lowest value, the simplest one, simplicity following method_order. The
+  # per-day naive comes first: it is the reference of the MASE and works in
+  # the unit of analysis. The candidates of step 10 (class model, robust local
+  # level, combination) go after those of step 9. The rule is applied by class
+  # at step 10, never site by site (11 validation forecasts per site are too
+  # few).
+  validation_start    = as.Date("2020-07-01"),
+  selection_tolerance = 0.02,
+  method_order = c("naive_per_day", "naive_raw", "snaive_per_day", "ses", "ets",
+                   "arima_noseason", "arima")
 )

@@ -1,4 +1,68 @@
-# Q2 : prévision de décembre 2021 (première version)
+# Q2 : prévision du mois suivant (version provisoire)
+
+```{r}
+#| include: false
+acc <- bl$accuracy
+a <- function(scope, method, col) acc[acc$scope == scope & acc$method == method, col]
+tg <- bl$targets
+n_val <- length(tg)
+dec20 <- bl$december
+dm <- function(method) dec20$mase[dec20$method == method]
+abs_big <- a("big", "naive_per_day", "abs_kwh")
+abs_all <- a("all", "naive_per_day", "abs_kwh")
+bt_pd <- bl$backtest[bl$backtest$method == "naive_per_day" & !bl$backtest$big, ]
+worst <- bt_pd[which.max(bt_pd$rel_error), ]
+worst_share <- worst$rel_error / sum(bt_pd$rel_error)
+stopifnot(bl$best_baseline == "naive_per_day")
+bs <- bl$big_signed
+stopifnot(bs[["0698BR"]] > 0, bs[["0998BR"]] < 0)  # the sentence on the big sites
+by_m <- bl$by_month
+w <- reshape(by_m[c("month", "method", "mase")], idvar = "month", timevar = "method",
+             direction = "wide")
+pd_beats_snaive <- sum(w$mase.naive_per_day < w$mase.snaive_per_day)
+```
+
+## Protocole d'évaluation
+
+La précision d'une méthode se mesure sur des mois qu'elle n'a pas vus. On applique la validation croisée à origine glissante du cours : pour prévoir le mois $t$, la méthode ne dispose que des factures jusqu'au mois $t-1$, puis l'origine avance d'un mois. L'horizon est d'un mois, celui de la question posée. Tout ce qui est estimé à partir des données (effet du mois, paliers, classes de sites, quantiles d'erreur) est recalculé à chaque origine avec les seules factures disponibles ; un test automatique vérifie que modifier les factures postérieures à une origine ne change pas la prévision faite à cette origine.
+
+Les `r n_val` mois de `r mname(min(tg))` à `r mname(max(tg))` servent de validation : c'est sur eux que se font tous les choix de méthode. Ils comprennent décembre 2020, le seul mois de même nature que le mois à prévoir. Les `r length(bl$test_targets)` mois de `r mname(min(bl$test_targets))` à `r mname(max(bl$test_targets))` sont mis de côté et ne seront lus qu'une fois, avec la méthode retenue, pour annoncer la précision attendue sans qu'elle ait servi à choisir.
+
+L'erreur d'une prévision est l'écart en kWh entre la facture et la prévision. Pour comparer des sites dont la facture va de quelques centaines à plusieurs centaines de milliers de kWh, on la rapporte à l'erreur habituelle de la méthode naïve par jour sur l'historique du site : c'est la MASE (Hyndman et Koehler, 2006). Le cours la définit par rapport à la naïve saisonnière ; la saisonnalité des sites étant faible (partie descriptive), la référence naturelle est ici la naïve simple, sur la consommation par jour. Une MASE de 1 signifie une erreur égale à l'erreur moyenne de cette référence sur l'historique du site. L'erreur relative (écart rapporté à la facture) est donnée aussi parce qu'elle se lit directement, mais elle explose quand la facture est petite, comme le note le cours : les choix reposent donc sur la MASE.
+
+La règle de choix est fixée avant de tester le moindre modèle : on retient la méthode de plus faible MASE moyenne en validation ; si une méthode plus simple fait moins de `r pct(bl$config$selection_tolerance)` moins bien, c'est elle qu'on garde. Le choix se fait par groupe de sites et non site par site : `r n_val` prévisions par site sont trop peu pour départager des méthodes sans retenir surtout le hasard.
+
+## Méthodes de référence
+
+Trois méthodes dérivées des méthodes simples du cours servent de références : la naïve brute (la prochaine facture égale la dernière), la naïve par jour (la consommation par jour du dernier mois, multipliée par le nombre de jours du mois prévu) et la naïve saisonnière par jour (la consommation par jour du même mois un an plus tôt). Une méthode plus élaborée qui ne fait pas mieux qu'elles ne vaut pas sa complexité.
+
+```{r}
+#| label: tbl-baselines
+#| tbl-cap: "Précision des méthodes de référence en validation (sites ordinaires, prévisions à un mois). Erreur totale : somme des écarts absolus, en kWh."
+#| tbl-colwidths: [36, 10, 20, 16, 18]
+ord <- acc[acc$scope == "ordinary", ]
+ord <- ord[order(ord$mase), ]
+knitr::kable(data.frame(
+  `Méthode` = unname(bl$labels[ord$method]), MASE = num(ord$mase, 2),
+  `Erreur médiane` = pct(ord$rel_median, 1),
+  `90e centile` = pct(ord$rel_p90, 1),
+  `Erreur totale` = num(ord$abs_kwh),
+  check.names = FALSE), align = "lrrrr")
+```
+
+```{r}
+#| label: fig-baselines
+#| fig-cap: "MASE moyenne des méthodes de référence par mois prévu (sites ordinaires)."
+fig("backtest_baselines")
+```
+
+La naïve par jour est nettement la meilleure des trois (@tbl-baselines) : MASE de `r num(a("ordinary", "naive_per_day", "mase"), 2)` et erreur médiane de `r pct(a("ordinary", "naive_per_day", "rel_median"), 1)` sur les sites ordinaires. Elle fait mieux que la naïve brute sur `r pct(bl$per_day_vs_raw[["better"]])` des factures et aussi bien sur `r pct(bl$per_day_vs_raw[["equal"]])`, les mois où le mois prévu a autant de jours que le précédent : ramener la consommation au jour retire l'effet de la longueur du mois, déjà mis en évidence dans la partie descriptive. Elle bat la naïve saisonnière `r if (pd_beats_snaive == n_val) paste('à chacun des', n_val, 'mois') else paste('pendant', pd_beats_snaive, 'des', n_val, 'mois')` (@fig-baselines), dont décembre 2020 (MASE de `r num(dm("naive_per_day"), 2)` contre `r num(dm("naive_raw"), 2)` pour la naïve brute et `r num(dm("snaive_per_day"), 2)` pour la saisonnière). Un niveau vieux d'un an ignore les changements de niveau, fréquents sur ces sites, et ce qu'il gagne sur l'effet du mois est trop faible pour compenser : la naïve saisonnière ne l'emporte que sur `r bl$snaive_wins` sites ordinaires.
+
+L'erreur relative moyenne de la naïve par jour, `r pct(a("ordinary", "naive_per_day", "rel_mean"), 1)`, est très au-dessus de la médiane. Une seule facture pèse `r pct(worst_share)` de cette moyenne : celle de `r worst$site` en `r mname(worst$month)`, facturée `r num(worst$billed)` kWh pour `r num(worst$forecast)` prévus, au mois de la chute de consommation du site (partie Q1). C'est la limite de l'erreur relative signalée plus haut.
+
+En kWh, l'erreur est concentrée sur les deux gros sites : `r num(abs_big)` des `r num(abs_all)` kWh d'erreur absolue totale de la naïve par jour. Leurs erreurs ne vont pas dans le même sens : 0698BR, dont la consommation croît (partie descriptive), est sous-prévu de `r num(bs[["0698BR"]])` kWh au total sur les `r n_val` mois, alors que 0998BR est sur-prévu de `r num(-bs[["0998BR"]])` kWh. Leur MASE (`r num(a("big", "naive_per_day", "mase"), 2)`) reste comparable à celle des autres sites. Par la règle de choix, la naïve par jour est la référence que les modèles des parties suivantes doivent battre.
+
+## Prévision de décembre 2021 (première version)
 
 Prévision naïve : consommation par jour du dernier mois facturé, multipliée par les `r days_in_month(config$forecast_month)` jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
 

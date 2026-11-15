@@ -127,8 +127,9 @@ Rédaction au fil de l'eau : à la fin de chaque étape d'analyse, la partie cor
 
 ### Q2 : prévision du mois suivant
 
-- [ ] **Étape 8 : banc d'essai sans fuite et méthodes de référence**
+- [x] **Étape 8 : banc d'essai sans fuite et méthodes de référence**
   - Objectif : backtest à origine glissante, prévision à un mois, validation de juillet 2020 à mai 2021, test de juin à novembre 2021. Tout prétraitement (effet du mois, segmentation, neutralisation des écarts ponctuels, classes, quantiles) est recalculé à chaque origine avec les seules données disponibles. Le banc prend le prétraitement en argument : ceux qui dépendent de la segmentation y sont branchés à l'étape 10, après la calibration de l'étape 7. Méthodes de référence : naïve brute, naïve par jour, saisonnière naïve. Métriques : MASE, erreurs relatives (médiane, moyenne, 90e centile), erreur totale en kWh, avec et sans les 2 gros sites. Règle de sélection écrite dans `R/config.R`.
+  - Réalisé : erreur en kWh de la facture (facturé moins prévu) ; MASE = erreur absolue divisée par l'erreur absolue moyenne de la naïve par jour à un pas sur l'historique disponible à l'origine ; naïve saisonnière par jour (kWh par jour du même mois un an plus tôt). Le prétraitement est une fonction appliquée une fois par origine et partagée par les méthodes ; le banc refuse les mois de test sans `allow_test = TRUE`. Règle de sélection dans `R/config.R` avec un ordre de simplicité explicite (`method_order`, naïve par jour en tête). En validation, sur les sites ordinaires : naïve par jour MASE 0,95 et erreur médiane 1,1 %, naïve brute 2,37 et 3,8 %, naïve saisonnière 4,43 et 6,4 % ; la naïve par jour est la référence à battre. L'erreur relative moyenne est dominée par une facture (1240BR, mai 2021) : les choix reposent sur la MASE.
   - Fichiers : `R/backtest.R`, `scripts/06_baselines.R`, `tests/testthat/test-backtest.R`.
   - Vérification : test de non-fuite (modifier les valeurs postérieures à une origine ne change pas la prévision faite à cette origine) ; erreurs des références sur la validation.
   - Hors périmètre : modèles du cours ; aucune lecture des origines de test.
