@@ -70,3 +70,19 @@ test_that("arima_diagnosis flags degenerate orders and break-driven differencing
   expect_true(rw$degenerate)
   expect_equal(rw$d, 1)
 })
+
+test_that("arima_kind sorts auto.arima labels", {
+  info <- c("ARIMA(0,1,0)(0,0,0)[12]", "ARIMA(0,1,0)(0,0,0)[12] drift",
+            "ARIMA(0,1,0)(0,1,0)[12]", "ARIMA(1,0,0)(0,0,0)[12] intercept",
+            "ARIMA(1,1,0)(0,0,0)[12]", "ARIMA(0,0,0)(0,1,0)[12] drift")
+  expect_equal(arima_kind(info), c("naive", "drift", "seasonal_diff", "mean", "other_arma",
+                                   "seasonal_diff"))
+})
+
+test_that("break_diff_null_rate is a share, zero for walks too smooth to break", {
+  seg <- list(cost = "biweight", penalty = "MBIC", plateau_min = 3, K = 3)
+  set.seed(5)
+  expect_equal(break_diff_null_rate(1e-4, 29, 3, seg, 0.10, 0.05), 0)  # no 10 % break possible
+  r <- break_diff_null_rate(0.1, 29, 3, seg, 0.10, 0.05)
+  expect_true(r >= 0 && r <= 1)
+})

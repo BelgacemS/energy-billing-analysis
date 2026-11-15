@@ -166,8 +166,9 @@ config <- list(
   arima_season_sites = "0698BR",
   # Diagnosis of auto.arima, both variants, fitted once per site on the months
   # before test_start. A site is listed when:
-  # - degenerate order: p = q = P = Q = 0, the model is the per-day naive on
-  #   the log scale (d = 1, with or without drift) or a constant mean (d = 0);
+  # - degenerate order: p = q = P = Q = 0, no AR or MA term: a random walk
+  #   (d = 1; without drift it is the per-day naive on the log scale), a
+  #   seasonal random walk (D = 1), a constant mean (d = 0) or d = 2;
   # - differencing caused by breaks: the site has a level break above
   #   level_shift_min (step 5 segmentation refitted on the same months) and,
   #   once the mean of each regime between such breaks is removed, the KPSS
@@ -175,7 +176,14 @@ config <- list(
   #   when D = 1;
   # - autocorrelated residuals: Ljung-Box p-value below ljung_box_alpha, with
   #   h = 10 lags (2 x 12 for a seasonal model) capped at T / 5 as in the
-  #   course, and fitdf = p + q + P + Q (no test when h <= fitdf);
+  #   course note (FPP caps h at T / 5; rounded down here), and fitdf =
+  #   p + q + P + Q (no test when h <= fitdf);
   # - a fit that failed during the backtest.
-  ljung_box_alpha    = 0.05
+  ljung_box_alpha    = 0.05,
+  # Added after the review of step 9, rule above unchanged: rate at which the
+  # break criterion fires on pure random walks (no break) with the noise of
+  # each ordinary site (sd = MAD of its monthly log differences), to read the
+  # observed count as an upper bound.
+  break_null_reps = 10,
+  break_null_seed = 2021
 )

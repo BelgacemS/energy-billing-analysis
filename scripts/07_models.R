@@ -52,22 +52,20 @@ beats_naive <- colSums(site_mase[ord_sites, ] < site_mase[ord_sites, "naive_per_
 
 # Orders chosen by auto.arima at each origin (ordinary sites).
 ar <- bt[bt$method %in% c("arima", "arima_noseason") & !bt$big & !bt$fallback, ]
+ar$kind <- arima_kind(ar$info)
 ar$degenerate <- grepl("^ARIMA\\(0,\\d,0\\)\\(0,\\d,0\\)", ar$info)
-ar$naive_like <- grepl("^ARIMA\\(0,1,0\\)\\(0,0,0\\)\\[12\\]$", ar$info)  # no drift: naive
-ar$seasonal_diff <- grepl("\\(\\d,1,\\d\\)\\[12\\]", ar$info)
+ar$naive_like <- ar$kind == "naive"
+ar$seasonal_diff <- ar$kind == "seasonal_diff"
 orders_share <- aggregate(cbind(degenerate, naive_like, seasonal_diff) ~ method, ar, mean)
-# The seasonal test only asks for a difference once the history exceeds two
-# years: sites with D = 1 per target month, default variant.
+# auto.arima sets D = 0 without testing when the history has 2 x 12 months
+# or less (forecast 9.0.2), so a seasonal difference can only appear from the
+# origin with 25 months: sites with D = 1 per target month, default variant.
 seasonal_by_month <- tapply(ar$seasonal_diff[ar$method == "arima"], ar$month[ar$method == "arima"], sum)
 top_orders <- lapply(split(ar$info, ar$method), function(x) head(sort(table(x), decreasing = TRUE), 5))
 
-# Kind of each auto.arima fit, and its MASE against the per-day naive on the
-# same site-months: a random walk without drift is the naive itself, so the
-# gap between the two comes from the other kinds.
-ar$kind <- ifelse(ar$naive_like, "naive",
-           ifelse(ar$seasonal_diff, "seasonal_diff",
-           ifelse(grepl("drift", ar$info), "drift",
-           ifelse(grepl("intercept", ar$info), "mean", "other_arma"))))
+# MASE of each kind of auto.arima fit against the per-day naive on the same
+# site-months: a random walk without drift is the naive itself, so the gap
+# between the two comes from the other kinds.
 nv <- bt[bt$method == "naive_per_day", c("month", "site", "scaled_error")]
 ar <- merge(ar, nv, by = c("month", "site"), suffixes = c("", "_naive"))
 kind_mase <- aggregate(cbind(scaled_error, scaled_error_naive) ~ method + kind, ar, mean)
@@ -113,7 +111,20 @@ reason_counts <- aggregate(cbind(degenerate, break_diff, lb_reject, fit_failed, 
                            diag_ord, sum)
 seasonal_diff_sites <- tapply(diag_ord$D == 1, diag_ord$variant, sum)
 flag_vs_mase <- aggregate(cbind(val_mase, naive_mase) ~ variant + flagged, diag_ord, mean)
-degenerate_kind <- table(diag_ord$variant[diag_ord$degenerate], diag_ord$d[diag_ord$degenerate])
+degenerate_models <- table(diag_ord$model[diag_ord$degenerate & diag_ord$variant == "arima_noseason"])
+n_pre_months <- length(unique(pre$month))
+lb_lag <- unique(diag_ord$lb_lag)
+
+# The break criterion under the null: pure random walks with the noise of
+# each ordinary site (D = 0 variant). Expected number of sites flagged
+# although differencing is the right model.
+set.seed(config$break_null_seed)
+null_rate <- vapply(split(pre[!pre$site %in% big, ], pre$site[!pre$site %in% big]), function(d) {
+  d <- d[order(d$month), ]
+  break_diff_null_rate(stats::mad(diff(log(d$kwh_per_day))), nrow(d), config$break_null_reps,
+                       seg_args, config$level_shift_min, config$ljung_box_alpha)
+}, numeric(1))
+break_null_expected <- sum(null_rate)
 
 # ---- Figure ------------------------------------------------------------------
 labels <- c(naive_per_day = "Naïve par jour", ses = "Lissage exponentiel simple", ets = "ETS",
@@ -133,25 +144,27 @@ save_fig(p, "backtest_models")
 # Conclusion: on the 90 ordinary sites, no course model beats the per-day
 # naive (mean validation MASE 0.95): SES 1.02, ETS 1.04, auto.arima without
 # seasonal difference 1.16, default auto.arima 1.27; the naive is best in
-# 10 of 11 months (ETS 1.436 against 1.437 in May 2021), and the pooled
-# rule keeps it. The models mostly
-# rebuild the naive: SES alpha >= 0.95 in 76 % of the fits, ETS(A,N,N) (that
+# 10 of 11 months (SES 1.420 against 1.437 in May 2021), and the pooled
+# rule keeps it. The models mostly rebuild the naive: SES alpha >= 0.95 in 76 % of the fits, ETS(A,N,N) (that
 # is SES) in 91 %, ARIMA(0,1,0) without drift (the per-day naive itself) in
 # 37 % (default) and 42 % (D = 0) of the auto.arima fits. Every other kind
 # of fit does worse than the naive on the same site-months (D = 0 variant,
 # MASE of the model against the naive): reversion to a mean 1.78 / 1.31,
 # drift 1.06 / 0.76, other AR or MA terms 0.63 / 0.47; in the default
-# variant, a seasonal difference 1.49 / 0.68: never chosen before the
-# February 2021 forecast (25 months of history), then on 36 to 40 of the 90
-# sites each month. On the two
-# big sites the reverse holds: auto.arima without seasonal difference 0.79
-# and ETS 0.84 against 0.95.
+# variant, a seasonal difference 1.49 / 0.68: auto.arima does not consider
+# it with 24 months of history or less, then chooses it for 36 to 40 of the
+# 90 sites each month from the February 2021 forecast. On the two big sites
+# the reverse holds: auto.arima D = 0 (which keeps the seasonal difference
+# for 0698BR) 0.79 and ETS 0.84 against 0.95.
 # Diagnosis on January 2019 to May 2021 (D = 0 variant): 54 degenerate
-# orders (50 random walks, i.e. the naive, 3 constant means), 41 sites whose
-# differencing only absorbs level breaks, 5 with autocorrelated residuals
-# (Ljung-Box on 5 lags has little power on 29 months), no failed fit. On
-# the flagged sites auto.arima errs 1.25 times as much as the naive, 1.11
-# times on the others.
+# orders (44 random walks without drift, i.e. the naive, 6 with drift, 3
+# constant means, 1 with d = 2), 41 sites whose differencing disappears
+# once the breaks are removed, 5 with autocorrelated residuals (Ljung-Box on
+# 5 lags has little power on 29 months), no failed fit. The break criterion
+# overstates: on pure random walks with the noise of each site it would
+# flag 10.6 sites on average (the segmentation also cuts a random walk into
+# plateaus), so about 30 of the 41 go beyond what a random walk produces. 71 of the 90 sites are flagged; auto.arima errs
+# 1.25 times as much as the naive on them, 1.11 times on the others.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(accuracy, file.path(config$tables_dir, "models_accuracy.csv"), row.names = FALSE)
@@ -179,7 +192,11 @@ results <- list(
   reason_counts   = reason_counts,
   seasonal_diff_sites = seasonal_diff_sites,
   flag_vs_mase    = flag_vs_mase,
-  degenerate_kind = degenerate_kind
+  degenerate_models = degenerate_models,
+  n_pre_months    = n_pre_months,
+  lb_lag          = lb_lag,
+  break_null_rate = null_rate,
+  break_null_expected = break_null_expected
 )
 saveRDS(results, file.path(config$results_dir, "models.rds"))
 cat("Models written to", config$output_dir, "in", round(timing), "s of backtest\n")

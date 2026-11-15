@@ -21,7 +21,7 @@ arima_label <- function(fit) {
 #' one-step forecast on the log scale (`mean`) and a label (`info`).
 fit_ses <- function(y, site) {
   f <- forecast::ses(y, h = 1)
-  list(mean = as.numeric(f$mean), info = sprintf("SES alpha=%.2f", f$model$par[["alpha"]]))
+  list(mean = as.numeric(f$mean), info = sprintf("SES alpha=%.4f", f$model$par[["alpha"]]))
 }
 make_fit_ets <- function(additive_only) {
   function(y, site) {
@@ -72,6 +72,16 @@ arima_ljung_box <- function(fit) {
   c(lag = h, p_value = stats::Box.test(r, lag = h, type = "Ljung-Box", fitdf = fitdf)$p.value)
 }
 
+#' Kind of an auto.arima fit from its label (arima_label): "naive" (random
+#' walk without drift, the per-day naive itself), "seasonal_diff" (D = 1),
+#' "drift", "mean" (stationary model with a mean) or "other_arma".
+arima_kind <- function(info) {
+  ifelse(grepl("^ARIMA\\(0,1,0\\)\\(0,0,0\\)\\[12\\]$", info), "naive",
+  ifelse(grepl("\\(\\d,1,\\d\\)\\[12\\]", info), "seasonal_diff",
+  ifelse(grepl("drift", info), "drift",
+  ifelse(grepl("intercept", info), "mean", "other_arma"))))
+}
+
 #' Regime index of each month between level breaks: `break_index` gives the
 #' first month of each new regime.
 regimes <- function(n, break_index) cumsum(seq_len(n) %in% break_index) + 1L
@@ -97,4 +107,20 @@ arima_diagnosis <- function(fit, y, regime, alpha) {
              break_diff = break_diff, lb_lag = lb[["lag"]], lb_p = lb[["p_value"]],
              lb_reject = !is.na(lb[["p_value"]]) && lb[["p_value"]] < alpha,
              stringsAsFactors = FALSE)
+}
+
+#' Share of pure random walks (no break) flagged as break-driven
+#' differencing: `reps` walks of length `n` with innovation sd `sd`, segmented
+#' and diagnosed as the sites are (D = 0 variant). Measures how often the
+#' criterion fires when differencing is the right model.
+break_diff_null_rate <- function(sd, n, reps, seg_args, min_change, alpha) {
+  hits <- vapply(seq_len(reps), function(r) {
+    y <- stats::ts(cumsum(stats::rnorm(n, sd = sd)), frequency = 12)
+    seg <- do.call(segment_series, c(list(as.numeric(y)), seg_args))
+    br <- seg$breaks
+    large <- br$index[abs(exp(br$level_after - br$level_before) - 1) > min_change]
+    fit <- suppressWarnings(forecast::auto.arima(y, D = 0))
+    arima_diagnosis(fit, y, regimes(n, large), alpha)$break_diff
+  }, logical(1))
+  mean(hits)
 }
