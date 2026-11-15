@@ -114,9 +114,9 @@ save_fig(p, "suspects_by_type")
 # (transitions) and 24 breaks in the 4 month-directions that beat chance
 # (April 2019 down, October and November 2019 and April 2020 up; probable
 # network changes). The suspect bills sum to +25,974 kWh above and 12,924 kWh
-# below the expected value; the lasting changes add +309,642 and -152,397 kWh
-# from their start (ramp included) to the next change, more likely equipment
-# changes than billing errors.
+# below the expected value; the lasting changes add +345,216 and -223,568 kWh
+# from their start (ramp included), each month counted once, more likely
+# equipment changes than billing errors.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(small, file.path(config$tables_dir, "suspects.csv"), row.names = FALSE)

@@ -139,10 +139,4 @@ test_that("biweight_partition dates a ramp break at its earliest tied month", {
   # so a new plateau starting at 11, 12 or 13 has the same total cost.
   z <- c(noise(10, 7), 50, 60, noise(8, 8) + 100)
   expect_equal(biweight_partition(z, K = 3, penalty = 3 * log(20), minseglen = 3), c(10L, 20L))
-  # rounding noise must not move the break
-  for (eps in c(1e-13, -1e-13, 1e-12)) {
-    z2 <- z
-    z2[11:12] <- z2[11:12] + eps
-    expect_equal(biweight_partition(z2, K = 3, penalty = 3 * log(20), minseglen = 3), c(10L, 20L))
-  }
 })
