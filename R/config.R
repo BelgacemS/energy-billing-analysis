@@ -266,7 +266,9 @@ config <- list(
   #   weights, Bates and Granger, 1969), chosen before the run: the per-day
   #   naive and the two candidates above.
   # Selection rule of step 8 (method_order, selection_tolerance) applied to
-  # the mean validation MASE of each class, step 9 methods included.
+  # the mean validation MASE of each class, over the per-day naive and the
+  # step 9 and step 10 methods (the raw and seasonal naives, far behind at
+  # step 8, are left out).
   class_k_range       = 2:6,
   combination_methods = c("naive_per_day", "naive_adj", "robust_level")
 )
