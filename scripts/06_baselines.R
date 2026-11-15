@@ -17,7 +17,7 @@ save_fig <- function(plot, name, width = 7, height = 4.5) {
 theme_set(theme_minimal(base_size = 10))
 
 bills <- load_bills(config$data_path)
-big <- big_sites(bills, config$big_site_kwh)
+big <- big_sites(bills[bills$month < config$test_start, ], config$big_site_kwh)  # test months unread
 
 # ---- Backtest on the validation months --------------------------------------
 targets <- seq(config$validation_start, add_months(config$test_start, -1), by = "month")
@@ -41,7 +41,11 @@ wide <- reshape(bt[!bt$big, c("method", "month", "site", "rel_error")], idvar = 
                 timevar = "method", direction = "wide")
 # Equal when the origin and target months have the same number of days.
 per_day_vs_raw <- c(better = mean(wide$rel_error.naive_per_day < wide$rel_error.naive_raw),
-                    equal = mean(wide$rel_error.naive_per_day == wide$rel_error.naive_raw))
+                    equal = mean(abs(wide$rel_error.naive_per_day - wide$rel_error.naive_raw) < 1e-9))
+
+# Signed error of the per-day naive for each big site (> 0: under-forecast).
+big_rows <- bt$big & bt$method == "naive_per_day"
+big_signed <- tapply(bt$error[big_rows], bt$site[big_rows], sum)
 
 # December 2020, the only validation month like the forecast target.
 december <- by_month[by_month$month == as.Date("2020-12-01"), ]
@@ -59,14 +63,14 @@ snaive_wins <- sum(site_mase[!rownames(site_mase) %in% big, "snaive_per_day"] <
 
 # ---- Figure ------------------------------------------------------------------
 labels <- c(naive_per_day = "Naïve par jour", naive_raw = "Naïve brute",
-            snaive_per_day = "Saisonnière naïve par jour")
+            snaive_per_day = "Naïve saisonnière par jour")
 by_month$label <- factor(labels[by_month$method], levels = labels)
 p <- ggplot(by_month, aes(month, mase, colour = label)) +
   geom_line() +
   geom_point(size = 1.2) +
   scale_colour_manual(values = c("#08519c", "#6baed6", "#e6550d"), name = NULL) +
   scale_x_date(date_labels = "%m/%Y", breaks = targets[c(TRUE, FALSE)]) +
-  labs(x = "Mois prévu", y = "MASE moyen (sites ordinaires)") +
+  labs(x = "Mois prévu", y = "MASE moyenne (sites ordinaires)") +
   theme(legend.position = "bottom")
 save_fig(p, "backtest_baselines")
 # Conclusion: on the 90 ordinary sites and the 11 validation months, the
@@ -78,12 +82,12 @@ save_fig(p, "backtest_baselines")
 # than the raw naive (2.37, 3.8 %) on 71 % of the bills and equal on 18 %
 # (months of the same length), and better than the seasonal naive (4.43,
 # 6.4 %) in every month, December 2020 included (0.64 against 1.42 and
-# 4.29). A level a year old misses the
-# changes of level (step 3), which weigh far more than the weak month
-# effect: the seasonal naive is better on 3 ordinary sites only. The two big
-# sites carry 248,412 of the 291,430 kWh of absolute error of the per-day
-# naive and are under-forecast overall (+51,260 kWh), as expected from their
-# growth. The rule keeps the per-day naive as the baseline to beat.
+# 4.29). A level a year old misses the changes of level (step 3), which
+# weigh far more than the weak month effect: the seasonal naive is better on
+# 3 ordinary sites only. The two big sites carry 248,412 of the 291,430 kWh
+# of absolute error of the per-day naive. 0698BR, which grows (step 3 bis),
+# is under-forecast by 66,719 kWh; 0998BR, which does not, is over-forecast
+# by 15,459 kWh. The rule keeps the per-day naive as the baseline to beat.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(accuracy, file.path(config$tables_dir, "backtest_baselines.csv"), row.names = FALSE)
@@ -101,7 +105,8 @@ results <- list(
   december       = december,
   per_day_vs_raw = per_day_vs_raw,
   best_baseline  = best_baseline,
-  snaive_wins    = snaive_wins
+  snaive_wins    = snaive_wins,
+  big_signed     = big_signed
 )
 saveRDS(results, file.path(config$results_dir, "backtest_baselines.rds"))
 cat("Baselines written to", config$output_dir, "\n")

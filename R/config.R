@@ -138,8 +138,8 @@ config <- list(
   # bills available at the origin (one-step, in sample), so it is free of
   # scale across sites and the per-day naive sits near 1.
   # Selection rule, written before any model is run: lowest mean validation
-  # MASE; among the methods within selection_tolerance (relative) of that
-  # lowest value, the simplest one, simplicity following method_order. The
+  # MASE; among the methods less than selection_tolerance (relative) above
+  # that lowest value, the simplest one, simplicity following method_order. The
   # per-day naive comes first: it is the reference of the MASE and works in
   # the unit of analysis. The candidates of step 10 (class model, robust local
   # level, combination) go after those of step 9. The rule is applied by class

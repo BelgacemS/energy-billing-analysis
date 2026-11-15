@@ -33,6 +33,7 @@ test_that("naive_scale is the in-sample MAE of the per-day naive", {
   flat$kwh_per_day[flat$site == "A"] <- 5
   flat$kwh[flat$site == "A"] <- 5 * d
   expect_error(naive_scale(flat), "Zero MASE scale")
+  expect_error(naive_scale(rbind(b, transform(b[1, ], site = "C"))), "No two consecutive bills")
 })
 
 test_that("backtest errors, relative and scaled errors are consistent", {

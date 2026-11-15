@@ -24,6 +24,7 @@ naive_scale <- function(train) {
   same <- b$site[-1] == b$site[-n] & b$month[-1] == add_months(b$month[-n], 1)
   err <- abs(b$kwh[-1] - b$kwh_per_day[-n] * b$month_days[-1])[same]
   scale <- tapply(err, b$site[-1][same], mean)
+  if (!all(unique(b$site) %in% names(scale))) stop("No two consecutive bills for some sites")
   if (any(!(scale > 0))) stop("Zero MASE scale for some sites")
   scale
 }
@@ -80,12 +81,12 @@ backtest_accuracy <- function(bt) {
   }))
 }
 
-#' Selection rule of R/config.R: among the methods whose mean MASE is within
-#' `tolerance` (relative) of the lowest, the first one in `order`.
+#' Selection rule of R/config.R: among the methods whose mean MASE is less
+#' than `tolerance` (relative) above the lowest, the first one in `order`.
 select_method <- function(mase, order, tolerance) {
   if (is.null(names(mase)) || !all(names(mase) %in% order)) {
     stop("Every method must be named and ranked in method_order")
   }
-  ok <- names(mase)[mase <= min(mase) * (1 + tolerance)]
+  ok <- names(mase)[mase < min(mase) * (1 + tolerance)]
   order[order %in% ok][1]
 }
