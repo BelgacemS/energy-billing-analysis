@@ -1,6 +1,7 @@
 # Rolling-origin backtest, one month ahead (step 8), and the baseline
 # forecasters. A forecaster is a function(train, target) returning one row per
-# site of `train` with columns site and kwh (forecast of the bill of `target`).
+# site of `train` with columns site and kwh (forecast of the bill of `target`),
+# and optionally info (text kept in the output, e.g. the fitted model).
 
 #' Raw naive: the next bill equals the last one.
 naive_raw_forecast <- function(train, target) {
@@ -37,7 +38,7 @@ naive_scale <- function(train) {
 #' refused unless allow_test = TRUE (step 11). Returns one row per method,
 #' target month and site: billed, forecast, error = billed - forecast,
 #' relative error |error| / billed, MASE scale (naive_scale) and scaled error
-#' |error| / scale.
+#' |error| / scale, and the info column of the forecaster (NA if none).
 backtest <- function(bills, targets, methods, test_start, preprocess = identity,
                      allow_test = FALSE) {
   if (!allow_test && any(targets >= test_start)) {
@@ -49,7 +50,10 @@ backtest <- function(bills, targets, methods, test_start, preprocess = identity,
     prep <- preprocess(train)
     actual <- bills[bills$month == target, c("site", "kwh")]
     do.call(rbind, lapply(names(methods), function(m) {
-      fc <- methods[[m]](prep, target)[c("site", "kwh")]
+      fc <- methods[[m]](prep, target)
+      fc <- data.frame(site = fc$site, kwh = fc$kwh,
+                       info = if (is.null(fc$info)) NA_character_ else as.character(fc$info),
+                       stringsAsFactors = FALSE)
       if (anyDuplicated(fc$site) || !setequal(fc$site, actual$site) ||
           any(!is.finite(fc$kwh))) {
         stop("Method ", m, ": one finite forecast per site expected for ", target)
@@ -59,7 +63,7 @@ backtest <- function(bills, targets, methods, test_start, preprocess = identity,
       data.frame(method = m, origin = add_months(target, -1), month = target,
                  site = out$site, billed = out$kwh, forecast = out$kwh_fc, error = err,
                  rel_error = abs(err) / out$kwh, scale = unname(scale[out$site]),
-                 scaled_error = abs(err) / unname(scale[out$site]),
+                 scaled_error = abs(err) / unname(scale[out$site]), info = out$info,
                  stringsAsFactors = FALSE)
     }))
   })

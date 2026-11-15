@@ -148,5 +148,44 @@ config <- list(
   validation_start    = as.Date("2020-07-01"),
   selection_tolerance = 0.02,
   method_order = c("naive_per_day", "naive_raw", "snaive_per_day", "ses", "ets",
-                   "arima_noseason", "arima")
+                   "arima_noseason", "arima"),
+
+  # Course models (step 9), fitted site by site at each origin on log kWh per
+  # calendar day (monthly ts). The one-step forecast is exp(log forecast) x
+  # days of the target month: the median of the forecast distribution, which
+  # suits absolute errors (MASE). A fit that fails falls back to the per-day
+  # naive and is counted.
+  # ses: forecast::ses. ets: forecast::ets, additive components only (on the
+  # log scale a multiplicative component would duplicate the log).
+  # arima: auto.arima with its defaults (seasonal difference chosen by the
+  # "seas" test). arima_noseason: same with D = 0 (no seasonal difference,
+  # seasonal AR and MA terms still allowed) for every site except
+  # arima_season_sites, where the default choice is kept (0698BR, the only
+  # series where the course tests agree on a seasonal difference, step 3 bis).
+  ets_additive_only  = TRUE,
+  arima_season_sites = "0698BR",
+  # Diagnosis of auto.arima, both variants, fitted once per site on the months
+  # before test_start. A site is listed when:
+  # - degenerate order: p = q = P = Q = 0, no AR or MA term: a random walk
+  #   (d = 1; without drift it is the per-day naive on the log scale), a
+  #   seasonal random walk (D = 1), a constant mean (d = 0) or d = 2;
+  # - differencing caused by breaks: the site has a level break above
+  #   level_shift_min (step 5 segmentation refitted on the same months) and,
+  #   once the mean of each regime between such breaks is removed, the KPSS
+  #   test (ndiffs) asks for fewer differences than d, or nsdiffs for none
+  #   when D = 1;
+  # - autocorrelated residuals: Ljung-Box p-value below ljung_box_alpha, with
+  #   h = 10 lags (2 x 12 for a seasonal model) capped at T / 5 as in the
+  #   course note (FPP caps h at T / 5; rounded down here), and fitdf =
+  #   p + q + P + Q (no test when h <= fitdf);
+  # - a fit that failed during the backtest.
+  ljung_box_alpha    = 0.05,
+  # Added after the review of step 9, rule above unchanged: rate at which the
+  # break criterion fires on random walks, for each ordinary site, under two
+  # nulls that bracket the truth: Gaussian increments with sd = MAD of its
+  # monthly log differences (the MAD drops the large jumps, so too few
+  # breaks) and its own increments resampled with replacement (the jumps of
+  # real breaks count as ordinary increments, so too many).
+  break_null_reps = 10,
+  break_null_seed = 2021
 )
