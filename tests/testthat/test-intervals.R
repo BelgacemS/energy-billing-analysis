@@ -45,6 +45,18 @@ test_that("empirical quantiles, Gaussian bounds and coverage", {
   expect_equal(coverage(c(1, 5, 10), c(0, 0, 0), c(2, 5, 9)), 2 / 3)
 })
 
+test_that("temporary_scenario goes back to the level before a recent break", {
+  b <- sim(function(x) { x[28:30] <- x[28:30] + log(2); x })
+  target <- add_months(max(b$month), 1)
+  prep <- prep_fun(b)
+  tmp <- temporary_scenario(prep, target, 3)
+  lasting <- naive_per_day_forecast(prep, target)
+  expect_lt(abs(log(tmp$kwh[1] / (40 * days_in_month(target)))), 0.05)  # old level
+  expect_gt(lasting$kwh[1] / tmp$kwh[1], 1.8)
+  spike <- prep_fun(sim(function(x) { x[30] <- x[30] + log(2); x }))
+  expect_equal(temporary_scenario(spike, target, 3)$kwh, robust_level_forecast(spike, target)$kwh)
+})
+
 test_that("log_change_sd is the sd of monthly log changes", {
   b <- sim()
   x <- log(b$kwh_per_day[b$site == "S2"])

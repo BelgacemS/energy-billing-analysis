@@ -137,14 +137,16 @@ for (l in levels) {
   dec[[paste0("lo", tag)]] <- w$lo[match(dec$site, w$site)]
   dec[[paste0("hi", tag)]] <- w$hi[match(dec$site, w$site)]
 }
-temp <- robust_level_forecast(prep, target)
+temp <- temporary_scenario(prep, target, config$edge_months)
 last <- naive_per_day_forecast(prep, target)
 dec$scenario_temporary <- ifelse(dec$end_anomaly, temp$kwh[match(dec$site, temp$site)], NA)
 dec$scenario_lasting <- ifelse(dec$end_anomaly, last$kwh[match(dec$site, last$site)], NA)
 dec$reasons <- apply(dec[c("poor_fit", "end_anomaly", "noisy")], 1,
                      function(r) paste(c("poor_fit", "end_anomaly", "noisy")[r], collapse = ", "))
+dec$unreliable <- dec$end_anomaly | dec$noisy  # criteria that held on the test
 dec <- dec[order(dec$site), c("site", "class", "method", "forecast", "lo95", "lo80", "hi80", "hi95",
-                              "flagged", "reasons", "scenario_temporary", "scenario_lasting")]
+                              "flagged", "unreliable", "reasons", "scenario_temporary",
+                              "scenario_lasting")]
 rownames(dec) <- NULL
 stopifnot(nrow(dec) == length(unique(bills$site)), !anyNA(dec[c("forecast", "lo95", "hi95")]),
           all(dec$lo95 <= dec$lo80 & dec$lo80 <= dec$forecast & dec$forecast <= dec$hi80 &

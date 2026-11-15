@@ -295,8 +295,13 @@ config <- list(
   # method refitted on the 35 months, flags at the November 2021 origin,
   # empirical quantiles from the validation and test errors together. Sites
   # with end_anomaly in November 2021 get two scenarios: a temporary gap
-  # (robust_level, last bill set back to its plateau) and a lasting change
-  # (per-day naive, last bill kept).
+  # (back to the level before the anomaly: the plateau before a break of the
+  # last edge_months months, else robust_level with the last bill set back to
+  # its plateau; corrected after review, robust_level alone stayed on the new
+  # plateau after a recent break) and a lasting change (per-day naive, last
+  # bill kept). Column `unreliable` of the December table: end_anomaly or
+  # noisy, the criteria that held on the test (poor_fit did not, read after
+  # the test); `flagged` keeps the three-criterion rule above.
   interval_levels             = c(0.80, 0.95),
   reliability_mase_max        = 1,
   reliability_noise_quantile  = 0.75

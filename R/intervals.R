@@ -27,6 +27,26 @@ end_anomaly <- function(prep, edge) {
   }, logical(1))
 }
 
+#' Temporary-gap scenario of each site for `target`: back to the level
+#' before the anomaly. After a break above the minimal change in the last
+#' `edge` months, the cleaned level of the month before that break; otherwise
+#' the robust level (last bill set back to its plateau). Plus the target
+#' month effect, on the kWh scale.
+temporary_scenario <- function(prep, target, edge) {
+  eff <- target_effect(prep, target)
+  robust <- robust_level_forecast(prep, target)
+  kwh <- stats::setNames(robust$kwh, robust$site)
+  for (d in split(prep, prep$site)) {
+    d <- d[order(d$month), ]
+    n <- nrow(d)
+    start <- min(which(d$from_last))
+    if (start > 1 && start > n - edge) {
+      kwh[[d$site[1]]] <- exp(d$y_clean[start - 1] + eff[[d$site[1]]]) * days_in_month(target)
+    }
+  }
+  data.frame(site = names(kwh), kwh = unname(kwh), stringsAsFactors = FALSE)
+}
+
 #' Standard deviation of the monthly changes of log kWh per day of each
 #' site (sigma of the per-day naive, a random walk on the log scale).
 log_change_sd <- function(bills) {
