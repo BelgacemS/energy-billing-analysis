@@ -162,12 +162,12 @@ save_fig(p, "backtest_models")
 # for 0698BR) 0.79 and ETS 0.84 against 0.95.
 # Diagnosis on January 2019 to May 2021 (D = 0 variant): 54 degenerate
 # orders (44 random walks without drift, i.e. the naive, 6 with drift, 3
-# constant means, 1 with d = 2), 41 sites whose differencing disappears
+# constant means, 1 with d = 2), 42 sites whose differencing disappears
 # once the breaks are removed, 5 with autocorrelated residuals (Ljung-Box on
 # 5 lags has little power on 29 months), no failed fit. The break
 # criterion cannot tell a break from a random walk: on random walks it
-# would flag 8.2 sites with Gaussian increments of MAD scale and 35.5 with
-# each site's own increments resampled, against 41 observed. 71 of the 90
+# would flag 8.2 sites with Gaussian increments of MAD scale and 35.4 with
+# each site's own increments resampled, against 42 observed. 71 of the 90
 # sites are flagged; auto.arima errs 1.25 times as much as the naive on
 # them, 1.11 times on the others.
 

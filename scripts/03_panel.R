@@ -18,13 +18,15 @@ theme_set(theme_minimal(base_size = 10))
 
 bills <- load_bills(config$data_path)
 big <- big_sites(bills, config$big_site_kwh)
-seg_args <- function(cost) {
+seg_args <- function(cost, K = config$segment_K) {
   list(cost = cost, penalty = config$segment_penalty, plateau_min = config$plateau_min_months,
-       K = config$segment_K, nquantiles = config$segment_nquantiles)
+       K = K, nquantiles = config$segment_nquantiles)
 }
 
 # ---- Synthetic check: which cost separates anomalies from breaks? ---------
-# The three costs share the same minimal plateau and threshold K. The biweight
+# The three costs share the same minimal plateau and threshold K, the step 5
+# value (calibration_reference): with unit noise the spikes and pairs of 3 to
+# 8 units are meant to exceed it. The biweight
 # cost uses 3 log(n) per change; cpt.mean and cpt.np use changepoint's MBIC,
 # which also adds log(segment length) terms to the cost (mean.norm.mbic).
 synthetic <- do.call(rbind, lapply(c("biweight", "normal", "np"), function(cost) {
@@ -32,7 +34,8 @@ synthetic <- do.call(rbind, lapply(c("biweight", "normal", "np"), function(cost)
     n = length(unique(bills$month)), reps = config$synthetic_reps,
     seed = config$synthetic_seed, step_sizes = config$synthetic_step_sizes,
     spike_sizes = config$synthetic_spike_sizes, step_month = config$synthetic_step_month,
-    anomaly_month = config$synthetic_anomaly_month, seg_args = seg_args(cost)), cost = cost)
+    anomaly_month = config$synthetic_anomaly_month,
+    seg_args = seg_args(cost, config$calibration_reference$K)), cost = cost)
 }))
 synthetic <- synthetic[order(synthetic$cost, synthetic$noise, synthetic$scenario,
                              synthetic$size), ]
@@ -122,15 +125,13 @@ p <- ggplot(br_small, aes(month, fill = size)) +
   labs(x = "Premier mois du nouveau palier", y = "Nombre de sites ordinaires") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
 save_fig(p, "break_months")
-# Conclusion: with the default MBIC penalty, all 90 ordinary sites have at
-# least one lasting break (322 in all, 242 of 10 % or less), 58 sites one
-# above 10 %. Of the 67 sites with a level change above 10 % at step 3, 56
-# have a break above 10 % here; 2 of the 23 others do. The small breaks follow
-# slow drifts and site-specific summers: the plateau residuals are
-# autocorrelated (median lag-1 0.23 within plateaus), so the noise scale
-# from first differences is too small and the penalty too lenient; step 7 sets
-# K and the penalty. Breaks cluster in April 2020 (24 sites), June 2019 and
-# August 2021 (21 each); above 10 %, April 2020 (9) and November 2019 (7).
+# Conclusion (K = 6 from step 7): all 90 ordinary sites have at least one
+# lasting break (366 in all, 273 of 10 % or less, ignored by the typology),
+# 59 sites one above 10 %. Of the 67 sites with a level change above 10 % at
+# step 3, 56 have a break above 10 % here; 3 of the 23 others do. The small
+# breaks follow slow drifts (median lag-1 autocorrelation 0.12 within
+# plateaus). Breaks cluster in April 2020 (26 sites), June 2019 (24) and
+# August 2021 (23).
 
 # ---- Saved tables and numbers for the report -------------------------------
 write.csv(synthetic, file.path(config$tables_dir, "segment_synthetic.csv"), row.names = FALSE)
@@ -142,6 +143,7 @@ results <- list(
   config = config[c("segment_cost", "segment_penalty", "segment_K", "plateau_min_months",
                     "synthetic_reps", "synthetic_step_sizes", "synthetic_spike_sizes",
                     "synthetic_step_month")],
+  synthetic_K     = config$calibration_reference$K,
   n_months        = length(unique(bills$month)),
   synthetic       = synthetic,
   effect          = effect,
