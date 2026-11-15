@@ -12,6 +12,7 @@ format:
     include-in-header:
       text: |
         #set figure.caption(separator: [ : ])
+        #show figure: set block(breakable: true)
 crossref:
   tbl-title: "Tableau"
   fig-title: "Figure"
