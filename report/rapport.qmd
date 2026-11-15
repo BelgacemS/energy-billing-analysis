@@ -40,6 +40,7 @@ sus <- readRDS(file.path(config$results_dir, "suspects.rds"))
 cal <- readRDS(file.path(config$results_dir, "calibration.rds"))
 bl <- readRDS(file.path(config$results_dir, "backtest_baselines.rds"))
 mo <- readRDS(file.path(config$results_dir, "models.rds"))
+sel <- readRDS(file.path(config$results_dir, "select.rds"))
 n_small <- desc$n_sites - length(desc$big_sites)
 read_table <- function(name) read.csv(file.path(config$tables_dir, paste0(name, ".csv")))
 
