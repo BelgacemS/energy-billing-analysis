@@ -202,12 +202,69 @@ Sur l'ensemble des sites ordinaires, la naïve par jour reste la meilleure (MASE
 
 Groupe par groupe, la règle retient la naïve par jour pour `r sum(ord_sel$chosen == "naive_per_day")` des `r nrow(ord_sel)` groupes ordinaires. `r if (nrow(other) > 0) paste0("Exception : ", paste0("le ", grp(other$class), " (", sp$n[match(other$class, sp$class)], " sites), où la ", sapply(other$chosen, lab), " fait ", num(other$chosen_mase, 3), " contre ", num(other$naive_mase, 3), " pour la naïve, soit ", pct(1 - other$chosen_mase / other$naive_mase, 1), " de moins, juste au-delà de la tolérance de ", pct(config$selection_tolerance), collapse = " ; "), ". Sur si peu de sites et 11 mois, un tel écart est fragile.") else ""` Pour les gros sites, elle retient `r lab(big_sel$chosen)` (`r num(big_sel$chosen_mase, 2)` contre `r num(big_sel$naive_mase, 2)` pour la naïve), sur deux sites seulement. Ces choix sont évalués une seule fois, sur les mois de test, dans la partie suivante.
 
-## Prévision de décembre 2021 (première version)
-
-Prévision naïve : consommation par jour du dernier mois facturé, multipliée par les `r days_in_month(config$forecast_month)` jours de décembre. Total prévu : `r num(res$forecast_total)` kWh.
+## Évaluation finale sur les mois de test
 
 ```{r}
-f <- res$forecast
-knitr::kable(data.frame(Site = f$site, `kWh prévus` = num(f$kwh), check.names = FALSE),
-             align = "lr")
+#| include: false
+tt <- fc$test
+tst <- tt[tt$method == "strategy", ]
+ta <- fc$test_accuracy
+tacc <- function(scope, method, col) ta[ta$scope == scope & ta$method == method, col]
+tg <- fc$test_targets
+cv <- fc$coverage
+cov_of <- function(cons, l) cv$inside[cv$construction == cons & cv$level == l]
+cons_lab <- c(empirical = "empiriques", gaussian = "gaussiens")
+rel <- function(k, yes) mean(tst$rel_error[tst[[k]] == yes])
+relm <- function(k, yes) stats::median(tst$rel_error[tst[[k]] == yes])
+cm <- fc$criterion_mase
+fm <- fc$flag_mase
+n_test <- nrow(tst)
+```
+
+Les `r length(tg)` mois de test, de `r mname(min(tg))` à `r mname(max(tg))`, ont été lus une seule fois, avec la méthode retenue pour chaque groupe et des règles d'intervalle et de fiabilité écrites avant cette lecture. Ils sont plus difficiles que la validation : sur les sites ordinaires, la MASE passe de `r num(fc$val_mase[["ordinary"]], 2)` en validation à `r num(tacc("ordinary", "strategy", "mase"), 2)` sur le test. La stratégie retenue fait jeu égal avec la naïve par jour (`r num(tacc("ordinary", "naive_per_day", "mase"), 2)`), ce qui est attendu puisqu'elle est la naïve pour presque tous les sites ; l'erreur relative médiane est de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)`. Sur les deux gros sites, auto.arima perd l'avantage qu'il avait en validation (`r num(tacc("big", "strategy", "mase"), 2)` contre `r num(tacc("big", "naive_per_day", "mase"), 2)` pour la naïve) : choisi sur deux sites et onze mois, ce gain n'était pas solide.
+
+```{r}
+#| label: tbl-coverage
+#| tbl-cap: "Couverture des intervalles sur les mois de test (part des factures à l'intérieur)."
+knitr::kable(data.frame(Construction = c("Quantiles empiriques de validation", "Intervalles gaussiens du cours"),
+                        `80 %` = pct(c(cov_of("empirical", 0.8), cov_of("gaussian", 0.8))),
+                        `95 %` = pct(c(cov_of("empirical", 0.95), cov_of("gaussian", 0.95))),
+                        check.names = FALSE), align = "lrr")
+```
+
+Deux constructions d'intervalles ont été comparées (@tbl-coverage). Les quantiles empiriques reprennent la dispersion des erreurs de validation, séparément pour les sites signalés comme peu fiables et les autres. Les intervalles gaussiens sont ceux du cours : pour la naïve, la prévision plus ou moins un multiple de l'écart-type des variations mensuelles du site ; pour auto.arima, l'intervalle du modèle. Les quantiles empiriques sont trop étroits, car les erreurs du test dépassent celles de la validation. Les intervalles gaussiens, plus proches de la couverture visée, sont retenus, mais restent un peu courts (`r pct(cov_of("gaussian", 0.8))` pour 80 % et `r pct(cov_of("gaussian", 0.95))` pour 95 %). Le test sert ici à la fois à choisir entre les deux constructions et à mesurer leur couverture : avec deux candidats seulement, l'optimisme qui en résulte est faible, mais la couverture réelle est plutôt à lire comme un plafond.
+
+Un site est signalé comme peu fiable, à chaque origine, s'il remplit l'un de trois critères fixés à l'avance : une erreur de validation supérieure à sa variation habituelle (MASE au-dessus de `r num(fc$config$reliability_mase_max)`), une anomalie en fin de série (dernière facture hors palier, ou rupture dans les `r fc$config$edge_months` derniers mois), ou un bruit dans le quart le plus élevé des sites ordinaires. Mesuré en MASE, comme prévu, l'indicateur ne sépare pas les sites (`r num(fm$scaled_error[fm$flagged], 2)` pour les signalés contre `r num(fm$scaled_error[!fm$flagged], 2)`) : la MASE divise l'erreur par la variation habituelle du site, ce qui efface justement l'effet du bruit. En erreur relative, qui compte pour un gestionnaire, les sites signalés se trompent davantage (`r pct(rel("flagged", TRUE), 1)` en moyenne contre `r pct(rel("flagged", FALSE), 1)`). Deux critères portent ce résultat : l'anomalie en fin de série (`r cm$n[cm$criterion == "end_anomaly"]` factures, erreur relative médiane `r pct(relm("end_anomaly", TRUE), 1)` contre `r pct(relm("end_anomaly", FALSE), 1)`, MASE `r num(cm$mase_yes[cm$criterion == "end_anomaly"], 1)` contre `r num(cm$mase_no[cm$criterion == "end_anomaly"], 1)`) et le bruit (`r pct(relm("noisy", TRUE), 1)` contre `r pct(relm("noisy", FALSE), 1)`). Le critère d'erreur de validation n'apporte rien (`r pct(relm("poor_fit", TRUE), 1)` contre `r pct(relm("poor_fit", FALSE), 1)`) : la liste des sites peu fiables ci-dessous ne retient que les deux autres.
+
+## Prévision de décembre 2021
+
+```{r}
+#| include: false
+dc <- fc$december
+dc$unreliable <- grepl("end_anomaly|noisy", dc$reasons)
+amb <- dc[!is.na(dc$scenario_lasting), ]
+ord_dc <- dc[dc$class != "big", ]
+```
+
+La prévision finale est refaite sur les `r pan$n_months` mois, avec la méthode de chaque groupe et l'intervalle gaussien. Elle totalise `r num(sum(dc$forecast))` kWh pour décembre 2021, dont `r num(sum(dc$forecast[dc$class == "big"]))` kWh pour les deux gros sites. `r sum(ord_dc$unreliable)` sites ordinaires sur `r nrow(ord_dc)` sont peu fiables : `r sum(grepl("noisy", ord_dc$reasons))` pour leur bruit, `r sum(grepl("end_anomaly", ord_dc$reasons))` pour une fin de série ambiguë.
+
+Pour ces derniers, on ne sait pas encore si la dernière facture est un écart ponctuel ou le début d'un nouveau niveau. Deux scénarios sont chiffrés (@tbl-scenarios) : écart ponctuel, la consommation revient au palier (niveau robuste) ; changement durable, elle reste au niveau de la dernière facture (naïve par jour).
+
+```{r}
+#| label: tbl-scenarios
+#| tbl-cap: "Sites dont la fin de série est ambiguë : deux scénarios pour décembre 2021 (kWh)."
+knitr::kable(data.frame(Site = amb$site, `Écart ponctuel` = num(amb$scenario_temporary),
+                        `Changement durable` = num(amb$scenario_lasting),
+                        `Prévision retenue` = num(amb$forecast), check.names = FALSE),
+             align = "lrrr")
+```
+
+```{r}
+#| label: tbl-december
+#| tbl-cap: "Prévision de décembre 2021 par site (kWh), intervalles à 80 % et 95 %."
+knitr::kable(data.frame(Site = dc$site, `Prévision` = num(dc$forecast),
+                        `80 %` = paste0(num(dc$lo80), " à ", num(dc$hi80)),
+                        `95 %` = paste0(num(dc$lo95), " à ", num(dc$hi95)),
+                        `Peu fiable` = ifelse(dc$unreliable, "oui", ""), check.names = FALSE),
+             align = "lrrrl")
 ```
