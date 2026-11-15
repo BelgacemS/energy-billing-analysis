@@ -132,6 +132,16 @@ test_that("a lasting change carries its cumulative gap since the break", {
   expect_equal(out$direction, "over")
 })
 
+test_that("the cumulative gap of a change stops where the next change starts", {
+  level <- c(rep(base, 10), rep(base + log(1.5), 14), rep(base + log(3), 11))
+  p <- make_site("A", level)
+  out <- classify(p)
+  expect_equal(out$type, rep("lasting_change", 2))
+  d <- p$month_days
+  expect_equal(out$cumul_kwh[1], 50 * sum(d[11:24]))   # not the second change on top
+  expect_equal(out$cumul_kwh[2], 150 * sum(d[25:35]))  # against the 150 kWh/day level
+})
+
 test_that("a break shared by three sites is a probable network change", {
   p <- rbind(make_site("A", step_level(21, 0.5)), make_site("B", step_level(21, 0.3)),
              make_site("C", step_level(21, 0.4)), make_site("D", step_level(21, -0.4)))

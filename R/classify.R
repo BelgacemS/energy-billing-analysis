@@ -126,29 +126,35 @@ classify_episodes <- function(d, flag, brk, cfg) {
 #'
 #' The gap and z-score are taken against the level before the break
 #' (expected = old level + month effect). The cumulative gap sums billed -
-#' expected at the old level from the start of the change to the end of the
-#' series: the change starts at the first bill of a transition episode that
-#' touches the break (the ramp is part of the change), at the break otherwise
+#' expected at the old level from the start of the change to the month before
+#' the next large change starts (end of the series for the last one), so the
+#' cumulative gaps of a site add up without counting a later change again. A
+#' change starts at the first bill of a transition episode that touches the
+#' break (the ramp is part of the change), at the break otherwise
 #' (`cumul_from`). `episodes`: episode rows of the site (classify_episodes).
 #' Type: lasting change, probable network change if shared, indeterminate in
 #' the last `edge_months` months.
 break_rows <- function(d, brk, episodes, cfg) {
   n <- nrow(d)
+  brk <- brk[order(brk$index), ]
   ramps <- episodes[episodes$type == "transition", ]
   ramp_start <- tapply(ramps$index, ramps$episode, min)
   ramp_end <- tapply(ramps$index, ramps$episode, max)
+  from <- vapply(brk$index, function(b) min(c(b, ramp_start[ramp_start <= b & ramp_end >= b - 1])),
+                 numeric(1))
+  to <- c(from[-1] - 1, n)
   do.call(rbind, c(list(data.frame(index = integer(), type = character(), expected_kwh = numeric(),
                                    z = numeric(), shared = logical(), cumul_kwh = numeric(),
                                    cumul_from = as.Date(character()), change = numeric())),
                    lapply(seq_len(nrow(brk)), function(k) {
     b <- brk$index[k]
-    from <- min(c(b, ramp_start[ramp_start <= b & ramp_end >= b - 1]))
+    span <- if (to[k] >= from[k]) from[k]:to[k] else integer()
     old <- exp(brk$level_before[k] + d$effect) * d$month_days
     type <- if (b > n - cfg$edge_months) "indeterminate"
       else if (brk$shared[k]) "network_change" else "lasting_change"
     data.frame(index = b, type = type, expected_kwh = old[b],
                z = (d$y[b] - brk$level_before[k]) / d$sigma[1], shared = brk$shared[k],
-               cumul_kwh = sum(d$kwh[from:n] - old[from:n]), cumul_from = d$month[from],
+               cumul_kwh = sum(d$kwh[span] - old[span]), cumul_from = d$month[from[k]],
                change = brk$change[k], stringsAsFactors = FALSE)
   })))
 }
