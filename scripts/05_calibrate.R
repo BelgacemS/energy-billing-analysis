@@ -192,17 +192,18 @@ p <- ggplot(fig, aes(100 * size, 100 * rate, colour = method, linetype = sign)) 
   guides(colour = guide_legend(ncol = 1), linetype = guide_legend(ncol = 1)) +
   theme(legend.position = "bottom", legend.box = "horizontal")
 save_fig(p, "calibration_detection", height = 5.5)
-# Conclusion: only K = 6 with the MBIC penalty keeps false alerts under 1 %
-# (0.9 %); K = 3, the step 5 value, gives 5.1 %, and a higher penalty raises
+# Conclusion: two settings keep false alerts under 1 %, K = 6 with the MBIC
+# penalty (0.9 %) and with 5/3 of it (1.0 %); their scores are within the tie
+# margin and the rule keeps the first, with fewer false alerts. K = 3, the step 5 value, gives 5.1 %, and a higher penalty raises
 # false alerts at every K (fewer plateaus, so slow drifts leave them). At
 # K = 6, spikes of 10 % and 20 % are flagged 59 % and 88 % of the time, 5 %
 # ones 16 %; breaks of 20 % are found 94 % of the time, 10 % ones 40 %.
-# Breaks are always typed as breaks, spikes as points in 92 % of the
-# detections; 3-month temporary gaps and pairs are flagged (pairs of 10 %:
+# Spikes are typed as points in 92 % of the detections; 3-month temporary gaps and pairs are flagged (pairs of 10 %:
 # 94 %) but read as two close lasting changes (right type in 1 % of pairs).
 # Hampel at threshold 3 has a similar false alert rate (1.0 %) and flags
 # fewer spikes (50 % at 10 %, 78 % at 20 %) and fewer 3-month gaps (45 %
-# against 83 % at 20 %). On the real data, suspect bills drop from 173 to 48.
+# against 83 % at 20 %). On the real data, flagged off-plateau bills
+# (break rows left out) drop from 173 to 48.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(grid, file.path(config$tables_dir, "calibration_grid.csv"), row.names = FALSE)

@@ -132,6 +132,7 @@ hd <- function(type, size) {
 }
 h_fa <- cal$hampel_fa$rate[cal$hampel_fa$threshold == cal$hampel_compared[["default"]]]
 ref <- g[g$K == 3 & g$beta == 3, ]
+adm <- g[g$admissible, ]  # settings under the false alert cap
 n_bills_sim <- cal$n_sites * pan$n_months
 cfgc <- cal$config
 ```
@@ -142,18 +143,18 @@ Une **fausse alerte** est une ligne suspecte dans un panel sans anomalie inject�
 
 ```{r}
 #| label: tbl-calibration
-#| tbl-cap: "Réglages essayés, pénalité par défaut : fausses alertes et détection sur panels simulés, alertes sur les données réelles (sites ordinaires)."
+#| tbl-cap: "Réglages essayés, pénalité par défaut : fausses alertes et détection sur panels simulés, alertes sur les données réelles (sites ordinaires ; factures hors palier, ruptures non comprises)."
 #| tbl-colwidths: [10, 16, 18, 18, 19, 19]
 gb <- g[g$beta == ch$beta, ]
 knitr::kable(data.frame(K = num(gb$K, 1), `Fausses alertes` = pct(gb$fa, 1),
                         `Écarts ponctuels détectés` = pct(gb$spike),
                         `Ruptures détectées` = pct(gb$level_break),
-                        `Factures suspectes réelles` = gb$suspect_bills,
+                        `Factures hors palier réelles` = gb$suspect_bills,
                         `Changements durables réels` = gb$lasting_changes, check.names = FALSE),
              align = "rrrrrr")
 ```
 
-La règle retient K = `r ch$K` avec la `r pen_txt(ch$beta)`, `r if (sum(g$admissible) == 1) "le seul réglage" else "le réglage le plus sensible parmi ceux"` sous `r pct(cfgc$calibration_fa_max)` de fausses alertes (`r pct(ch$fa, 1)`, soit environ `r num(ch$fa * n_bills_sim)` alertes injustifiées sur `r num(n_bills_sim)` factures). Le seuil de départ, K = 3, en faisait `r pct(ref$fa, 1)` : le bruit mesuré d'un mois sur l'autre sous-estime les dérives lentes des sites, que la segmentation prenait pour des écarts. Une pénalité plus forte augmente les fausses alertes à K égal, car avec moins de paliers ces dérives sortent davantage du palier. Sur les données réelles, le nouveau réglage ramène les factures suspectes de `r ref$suspect_bills` à `r ch$suspect_bills` (@tbl-calibration) ; le nombre de changements durables bouge peu (`r ref$lasting_changes` à `r ch$lasting_changes`).
+`r if (nrow(adm) == 1) paste0("Un seul réglage reste sous ", pct(cfgc$calibration_fa_max), " de fausses alertes.") else paste0("Seuls ", nrow(adm), " réglages restent sous ", pct(cfgc$calibration_fa_max), " de fausses alertes, tous avec K = ", paste(unique(adm$K), collapse = " ou "), " ; leurs détections sont à moins de ", num(100 * cfgc$calibration_tie, 1), " point l'une de l'autre, et la règle garde alors celui qui fait le moins de fausses alertes.")` Elle retient K = `r ch$K` avec la `r pen_txt(ch$beta)` (`r pct(ch$fa, 1)` de fausses alertes, soit environ `r num(ch$fa * n_bills_sim)` alertes injustifiées sur `r num(n_bills_sim)` factures). Le seuil de départ, K = 3, en faisait `r pct(ref$fa, 1)` : le bruit mesuré d'un mois sur l'autre sous-estime les dérives lentes des sites, que la segmentation prenait pour des écarts. Une pénalité plus forte augmente les fausses alertes à K égal, car avec moins de paliers ces dérives sortent davantage du palier. Sur les données réelles, le nouveau réglage ramène les factures hors palier signalées (ruptures non comprises) de `r ref$suspect_bills` à `r ch$suspect_bills` (@tbl-calibration) ; le nombre de changements durables bouge peu (`r ref$lasting_changes` à `r ch$lasting_changes`).
 
 ```{r}
 #| label: fig-calibration
@@ -162,7 +163,7 @@ La règle retient K = `r ch$K` avec la `r pen_txt(ch$beta)`, `r if (sum(g$admiss
 fig("calibration_detection")
 ```
 
-Le prix de ce réglage prudent est la sensibilité aux petits écarts (@fig-calibration). Un écart ponctuel de `r pct(0.2)` est signalé `r pct(det("spike", 0.2))` du temps, un de `r pct(0.1)` `r pct(det("spike", 0.1))` du temps, un de `r pct(0.05)` seulement `r pct(det("spike", 0.05))` du temps. Une rupture de `r pct(0.2)` est trouvée `r pct(det("level_break", 0.2))` du temps ; à `r pct(0.1)`, la taille même du seuil, `r pct(det("level_break", 0.1))`. Quand elle est détectée, une rupture est toujours lue comme une rupture, et un écart ponctuel est classé comme tel dans `r pct(type_ok("spike"))` des cas. Les écarts temporaires et les paires compensées sur `r cfgc$calibration_episode_months` mois sont bien signalés (paires de `r pct(0.1)` : `r pct(det("pair", 0.1))`), mais presque jamais avec leur type (`r pct(type_ok("pair"))` des paires détectées, `r pct(type_ok("temporary"))` des écarts temporaires) : un épisode de `r cfgc$calibration_episode_months` mois a la durée minimale d'un palier, et la méthode y voit le plus souvent deux changements durables rapprochés. Sur les données, une telle paire de changements de sens opposés est donc à lire comme un possible écart temporaire.
+Le prix de ce réglage prudent est la sensibilité aux petits écarts (@fig-calibration). Un écart ponctuel de `r pct(0.2)` est signalé `r pct(det("spike", 0.2))` du temps, un de `r pct(0.1)` `r pct(det("spike", 0.1))` du temps, un de `r pct(0.05)` seulement `r pct(det("spike", 0.05))` du temps. Une rupture de `r pct(0.2)` est trouvée `r pct(det("level_break", 0.2))` du temps ; à `r pct(0.1)`, la taille même du seuil, `r pct(det("level_break", 0.1))`. Un écart ponctuel détecté est classé comme tel dans `r pct(type_ok("spike"))` des cas. Les écarts temporaires et les paires compensées sur `r cfgc$calibration_episode_months` mois sont bien signalés (paires de `r pct(0.1)` : `r pct(det("pair", 0.1))`), mais presque jamais avec leur type (`r pct(type_ok("pair"))` des paires détectées, `r pct(type_ok("temporary"))` des écarts temporaires) : un épisode de `r cfgc$calibration_episode_months` mois a la durée minimale d'un palier, et la méthode y voit le plus souvent deux changements durables rapprochés. Sur les données, une telle paire de changements de sens opposés est donc à lire comme un possible écart temporaire.
 
 Le filtre de Hampel fait, à son seuil habituel, un taux de fausses alertes du même ordre (`r pct(h_fa, 1)`). Il signale moins souvent les écarts ponctuels (`r pct(hd("spike", 0.2))` à `r pct(0.2)`, `r pct(hd("spike", 0.1))` à `r pct(0.1)`) et beaucoup moins les écarts temporaires (`r pct(hd("temporary", 0.2))` à `r pct(0.2)` contre `r pct(det("temporary", 0.2))`). Surtout, il ne dit rien des ruptures, qui expliquent l'essentiel des kWh en écart. Le panel est retenu.
 
