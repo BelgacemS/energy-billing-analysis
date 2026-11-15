@@ -1,1 +1,27 @@
-<!-- Drafted at step 13. -->
+# Annexes {.appendix}
+
+## Liste complète des factures suspectes
+
+Lignes suspectes des sites ordinaires, classées par confiance puis par écart absolu en kWh. Types abrégés comme au @tbl-suspects-high ; pour un changement durable, l'écart est celui du premier mois du nouveau palier.
+
+```{r}
+#| label: tbl-suspects-all
+#| tbl-cap: "Lignes suspectes des sites ordinaires (kWh)."
+#| tbl-colwidths: [10, 10, 15, 11, 11, 10, 6, 15, 12]
+all_sus <- sus$flagged[!sus$flagged$big & sus$flagged$suspect, ]
+ta_all <- tab_sus(all_sus)
+ta_all$Confiance <- clab(all_sus$confidence)
+knitr::kable(ta_all, align = "lllrrrlll", row.names = FALSE)
+```
+
+## Prévision de décembre 2021 par site
+
+```{r}
+#| label: tbl-december
+#| tbl-cap: "Prévision de décembre 2021 par site (kWh), intervalles à 80 % et 95 %."
+knitr::kable(data.frame(Site = dc$site, `Prévision` = num(dc$forecast),
+                        `80 %` = paste0(num(dc$lo80), " à ", num(dc$hi80)),
+                        `95 %` = paste0(num(dc$lo95), " à ", num(dc$hi95)),
+                        `Peu fiable` = ifelse(dc$unreliable, "oui", ""), check.names = FALSE),
+             align = "lrrrl")
+```

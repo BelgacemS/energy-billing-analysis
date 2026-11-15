@@ -1,1 +1,27 @@
-<!-- Drafted at step 13. -->
+# Synthèse {.unnumbered}
+
+```{r}
+#| include: false
+s_month <- c("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+             "septembre", "octobre", "novembre", "décembre")
+s_mname <- function(d) paste(s_month[as.integer(format(d, "%m"))], format(d, "%Y"))
+s_ks <- function(x) ifelse(x < 0, paste0("−", num(-x)), paste0("+", num(x)))
+s_st <- sus$facts$suspect_types_by_count
+s_det <- function(type, size) mean(cal$detection$rate[cal$detection$type == type & cal$detection$size == size])
+s_ta <- fc$test_accuracy
+s_acc <- function(scope, method, col) s_ta[s_ta$scope == scope & s_ta$method == method, col]
+s_cov <- function(l) fc$coverage$inside[fc$coverage$construction == fc$construction & fc$coverage$level == l]
+s_dec <- fc$december
+s_ord <- s_dec[s_dec$class != "big", ]
+s_tg <- fc$test_targets
+```
+
+L'étude porte sur `r num(res$n_rows)` factures d'énergie de `r res$n_sites` sites d'accès radio, de `r s_mname(min(pan$panel$month))` à `r s_mname(max(pan$panel$month))`. Elle répond à deux questions : quelles factures paraissent erronées, et quelle consommation prévoir en décembre 2021 pour chaque site. Deux sites représentent à eux seuls `r pct(desc$big_share_kwh)` des kWh facturés ; ils sont traités à part.
+
+**Factures à vérifier.** Chaque facture est comparée à une valeur attendue : le niveau habituel du site, par paliers, corrigé de l'effet du mois. Sur les `r n_small` sites ordinaires, `r sus$facts$n_bills_suspect` factures sont à vérifier, sur `r sus$n_suspect_sites` sites. Le type le plus fréquent est le changement durable de niveau (`r s_st[["lasting_change"]]` cas), plus probablement un changement d'équipement ou de contrat qu'une erreur de facturation, à confirmer auprès des sites. Viennent ensuite les écarts ponctuels (`r s_st[["point"]]`) et les écarts temporaires. Hors changements durables, les écarts des factures suspectes totalisent `r s_ks(sus$gap_by_direction[["over"]])` kWh facturés en trop et `r s_ks(sus$gap_by_direction[["under"]])` kWh en moins. Par ailleurs, `r nrow(res$periods)` factures ne couvrent pas exactement leur mois, et une sous-facturation suivie de son rattrapage (0089KO, été 2019) est identifiée comme telle. Aucune facture des deux gros sites n'est signalée.
+
+La méthode a été réglée et validée sur des données simulées, en y plaçant des anomalies connues : elle produit environ `r pct(cal$chosen$fa, 0)` de fausses alertes, signale `r pct(s_det("spike", 0.2))` des écarts ponctuels de 20 % et `r pct(s_det("level_break", 0.2))` des changements de niveau de 20 %, mais seulement `r pct(s_det("spike", 0.1))` des écarts de 10 % et `r pct(s_det("spike", 0.05))` des écarts de 5 %.
+
+**Prévision de décembre 2021.** Aucun modèle plus élaboré ne fait durablement mieux qu'une règle simple : reprendre la consommation par jour du dernier mois facturé et la multiplier par le nombre de jours du mois à prévoir. Les modèles du cours (lissage exponentiel, ARIMA) retrouvent d'ailleurs le plus souvent cette règle, car le niveau des sites dérive d'un mois à l'autre sans motif régulier. Sur les `r length(s_tg)` mois de test, de `r s_mname(min(s_tg))` à `r s_mname(max(s_tg))`, jamais utilisés pour les choix, l'erreur médiane est de `r pct(s_acc("ordinary", "strategy", "rel_median"), 1)` sur les sites ordinaires. La prévision totale pour décembre 2021 est de `r num(sum(s_dec$forecast))` kWh. Sur les mois de test, l'intervalle à 80 % donné pour chaque site contient `r pct(s_cov(0.8))` des factures, un peu plus que prévu, et l'intervalle à 95 % en contient `r pct(s_cov(0.95))`, un peu moins. `r sum(s_ord$unreliable)` sites ordinaires sont peu fiables, surtout par leur variabilité ; pour `r sum(!is.na(s_dec$scenario_lasting))` d'entre eux, la dernière facture est ambiguë et deux scénarios sont chiffrés.
+
+**Recommandations.** Faire vérifier la liste priorisée par le service facturation, en commençant par les lignes de confiance élevée, et faire confirmer les changements durables par les responsables des sites. Leurs retours permettraient de mesurer un vrai taux d'erreur, que l'étude ne peut qu'approcher. Obtenir les tarifs pour chiffrer les écarts en euros. Pour la prévision, garder la règle simple, la recalculer chaque mois et suivre de près les sites peu fiables.
