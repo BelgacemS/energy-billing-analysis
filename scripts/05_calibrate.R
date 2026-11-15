@@ -1,5 +1,5 @@
 # Step 7: validation of the panel method by anomaly injection, choice of K
-# and of the penalty, comparison with the Hampel filter. About 35 minutes on
+# and of the penalty, comparison with the Hampel filter. About 45 minutes on
 # 6 cores. Self-contained: the reference segmentation is refitted here.
 # Run from the project root: Rscript scripts/05_calibrate.R
 source("R/config.R")
@@ -21,7 +21,9 @@ save_fig <- function(plot, name, width = 7, height = 4.5) {
          width = width, height = height, dpi = 300, bg = "white")
 }
 theme_set(theme_minimal(base_size = 10))
-cores <- max(1L, min(6L, parallel::detectCores() - 2L))
+# Forked workers (mclapply) do not exist on Windows; seeds are set per task,
+# so the results do not depend on the number of cores.
+cores <- if (.Platform$OS.type == "windows") 1L else max(1L, min(6L, parallel::detectCores() - 2L))
 
 bills <- load_bills(config$data_path)
 big <- big_sites(bills, config$big_site_kwh)
