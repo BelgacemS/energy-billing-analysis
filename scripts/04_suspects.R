@@ -106,17 +106,17 @@ p <- ggplot(counts, aes(n, type, fill = confidence)) +
   theme(legend.position = "bottom")
 save_fig(p, "suspects_by_type")
 # Conclusion: on the 90 ordinary sites, 307 rows (bills and breaks) on 87
-# sites; 237 are suspect (233 distinct bills), on 83 sites, 110 of them in
-# high confidence: 74 point gaps, 63 lasting changes, 50 bills in 23
-# temporary gaps, 29 indeterminate, 19 bills in 8 compensated pairs (5 start
+# sites; 229 are suspect (225 distinct bills), on 83 sites, 103 of them in
+# high confidence: 73 point gaps, 56 lasting changes, 52 bills in 24
+# temporary gaps, 25 indeterminate, 21 bills in 7 compensated pairs (6 start
 # with the bill too high), 2 irregular periods and no implausible value. The
-# other 70 rows are shown but not suspect: 53 ramp bills between two levels
-# (transitions) and 17 breaks in the 3 month-directions that beat chance
-# (April 2019 down, October 2019 and April 2020 up; probable network
-# changes). The suspect bills sum to +27,062 kWh above and 12,589 kWh below
-# the expected value; the lasting changes add +467,144 and -157,855 kWh
-# since their start (ramp included), more likely equipment changes than
-# billing errors.
+# other 78 rows are shown but not suspect: 54 ramp bills between two levels
+# (transitions) and 24 breaks in the 4 month-directions that beat chance
+# (April 2019 down, October and November 2019 and April 2020 up; probable
+# network changes). The suspect bills sum to +25,974 kWh above and 12,924 kWh
+# below the expected value; the lasting changes add +345,216 and -223,568 kWh
+# from their start (ramp included), each month counted once, more likely
+# equipment changes than billing errors.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(small, file.path(config$tables_dir, "suspects.csv"), row.names = FALSE)

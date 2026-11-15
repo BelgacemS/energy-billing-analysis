@@ -132,6 +132,32 @@ test_that("a lasting change carries its cumulative gap since the break", {
   expect_equal(out$direction, "over")
 })
 
+test_that("cumulative gaps of successive changes keep each step and add up", {
+  level <- c(rep(base, 10), rep(base + log(1.5), 14), rep(base + log(3), 11))
+  p <- make_site("A", level)
+  out <- classify(p)
+  expect_equal(out$type, rep("lasting_change", 2))
+  d <- p$month_days
+  # the first change keeps its own +50 kWh/day after the second one
+  expect_equal(out$cumul_kwh[1], 50 * sum(d[11:35]))
+  expect_equal(out$cumul_kwh[2], 150 * sum(d[25:35]))
+  expect_equal(sum(out$cumul_kwh), sum(p$kwh[11:35] - 100 * d[11:35]))
+})
+
+test_that("a ramp before the next change starts that change, sums still add up", {
+  level <- c(rep(base, 10), rep(base + log(1.5), 14), rep(base + log(3), 11))
+  dev <- numeric(n_months)
+  dev[23:24] <- log(c(200, 250) / 150) / 0.01  # ramp from 150 to 300 kWh/day
+  p <- make_site("A", level, dev)
+  out <- classify(p)
+  brk <- out[out$type == "lasting_change", ]
+  expect_equal(brk$cumul_from, p$month[c(11, 23)])
+  d <- p$month_days
+  expect_equal(brk$cumul_kwh[1], 50 * sum(d[11:35]))
+  expect_equal(brk$cumul_kwh[2], 50 * d[23] + 100 * d[24] + 150 * sum(d[25:35]))
+  expect_equal(sum(brk$cumul_kwh), sum(p$kwh[11:35] - 100 * d[11:35]))
+})
+
 test_that("a break shared by three sites is a probable network change", {
   p <- rbind(make_site("A", step_level(21, 0.5)), make_site("B", step_level(21, 0.3)),
              make_site("C", step_level(21, 0.4)), make_site("D", step_level(21, -0.4)))

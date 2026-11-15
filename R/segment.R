@@ -31,7 +31,13 @@ biweight_fit <- function(z, K) {
 #' with segments of at least `minseglen` points. Returns the end index of
 #' each segment (the last one is length(z)). O(n^2) segment costs, fine for a
 #' few dozen months.
-biweight_partition <- function(z, K, penalty, minseglen = 1) {
+#'
+#' Exact ties are common: during a ramp each intermediate month costs K^2
+#' whichever side of the break it falls on, so several break months give the
+#' same total cost. Costs within `tol` (relative) of the minimum count as tied
+#' and the earliest start of the last segment wins; otherwise rounding noise
+#' (about 1e-14) picks the month, and the result changes across machines.
+biweight_partition <- function(z, K, penalty, minseglen = 1, tol = 1e-9) {
   n <- length(z)
   if (n < 2 * minseglen) return(n)
   best <- c(0, rep(Inf, n))  # best[e + 1]: optimal cost of z[1:e]
@@ -40,8 +46,8 @@ biweight_partition <- function(z, K, penalty, minseglen = 1) {
     s <- seq_len(e - minseglen + 1)
     s <- s[s == 1 | s > minseglen]  # the previous segment must be long enough
     cand <- vapply(s, function(k) best[k] + biweight_fit(z[k:e], K)$cost + penalty, numeric(1))
-    start[e] <- s[which.min(cand)]
     best[e + 1] <- min(cand)
+    start[e] <- s[which(cand <= best[e + 1] + tol * max(1, abs(best[e + 1])))[1]]
   }
   ends <- n
   while (start[ends[1]] > 1) ends <- c(start[ends[1]] - 1L, ends)

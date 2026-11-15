@@ -133,3 +133,10 @@ test_that("a change in the last two months is not a plateau yet", {
 test_that("segment_series refuses a series without noise", {
   expect_error(segment_series(rep(1, 35)), "Zero noise")
 })
+
+test_that("biweight_partition dates a ramp break at its earliest tied month", {
+  # Months 11 and 12 lie far from both levels: they cost K^2 on either side,
+  # so a new plateau starting at 11, 12 or 13 has the same total cost.
+  z <- c(noise(10, 7), 50, 60, noise(8, 8) + 100)
+  expect_equal(biweight_partition(z, K = 3, penalty = 3 * log(20), minseglen = 3), c(10L, 20L))
+})
