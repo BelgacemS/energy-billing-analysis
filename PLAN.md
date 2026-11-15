@@ -168,10 +168,11 @@ Rédaction au fil de l'eau : à la fin de chaque étape d'analyse, la partie cor
 
 ### Rapport
 
-- [ ] **Étape 12 : sorties finales et reproductibilité**
+- [x] **Étape 12 : sorties finales et reproductibilité**
   - Objectif : figures, tableaux et résultats définitifs dans `outputs/`, `run_all.R` qui enchaîne tous les scripts, README avec les commandes exactes.
   - Fichiers : `run_all.R`, `scripts/*.R`, `README.md`.
   - Vérification : après suppression de `outputs/`, `Rscript run_all.R` régénère tout ; temps total noté dans le README ; tests verts.
+  - Réalisé : vérification dans un clone neuf du dépôt plutôt qu'en supprimant `outputs/` (plus strict : environnement restauré depuis `renv.lock`, aucune sortie existante). `renv::restore()` 9 s, `run_all.R` 50 min dont 46 pour la calibration, tests verts (624), rapport rendu en 5 s ; les 28 tableaux sont identiques octet pour octet aux sorties de développement, et tous les résultats `.rds` égaux hors temps de calcul. Calibration sur un seul cœur sous Windows (pas de processus fils), mêmes résultats. README : ordre des scripts, étape du plan et sorties de chacun, temps mesurés.
   - Hors périmètre : rédaction.
 
 - [ ] **Étape 13 : finalisation du rapport**
