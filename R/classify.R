@@ -130,7 +130,9 @@ classify_episodes <- function(d, flag, brk, cfg) {
 #' starts, then old_(k+1) - old_k, its own step, which persists (old_k =
 #' expected kWh at the level before break k). The cumulative gaps of a site
 #' thus sum to billed - expected at its first level, each month counted once,
-#' and a later break never cuts the effect of an earlier one. A change starts
+#' and a later break never cuts the effect of an earlier one. Breaks of
+#' level_shift_min or less in between are part of the step of k until step 7. A
+#' change starts
 #' at the first bill of a transition episode that touches the break (the
 #' ramp is part of the change), at the break otherwise (`cumul_from`).
 #' `episodes`: episode rows of the site (classify_episodes).
