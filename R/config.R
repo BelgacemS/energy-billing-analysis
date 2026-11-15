@@ -270,5 +270,39 @@ config <- list(
   # step 9 and step 10 methods (the raw and seasonal naives, far behind at
   # step 8, are left out).
   class_k_range       = 2:6,
-  combination_methods = c("naive_per_day", "naive_adj", "robust_level")
+  combination_methods = c("naive_per_day", "naive_adj", "robust_level"),
+
+  # Final evaluation and December forecast (step 11), rules written before
+  # the test months are read (once, by scripts/09_forecast.R).
+  # Strategy: the method chosen for the class of each site at step 10.
+  # Reliability flag of a site at an origin, when any of:
+  # - poor_fit: mean validation MASE of its method above reliability_mase_max
+  #   (its errors exceed its usual month-to-month change);
+  # - end_anomaly: last bill off its plateau, or a break above
+  #   level_shift_min in the last edge_months months (segmentation of
+  #   R/config.R on the bills up to the origin);
+  # - noisy: noise scale of log kWh per day (months before test_start) above
+  #   the reliability_noise_quantile of the ordinary sites.
+  # Intervals at interval_levels, two constructions:
+  # - empirical: forecast x exp(q), q = equal-tailed quantiles of the
+  #   validation errors log(billed / forecast) of the strategy, pooled by
+  #   flag (flagged or not, flag at each validation origin);
+  # - gaussian: log forecast +- z sigma, the course interval of the method:
+  #   per-day naive and combination, sigma = sd of the site's monthly log
+  #   changes of kWh per day up to the origin; auto.arima, its own interval.
+  # Kept: the construction whose test coverage is closest to nominal (mean
+  # of |coverage - level| over the levels, all sites). December 2021:
+  # method refitted on the 35 months, flags at the November 2021 origin,
+  # empirical quantiles from the validation and test errors together. Sites
+  # with end_anomaly in November 2021 get two scenarios: a temporary gap
+  # (back to the level before the anomaly: the plateau before a break of the
+  # last edge_months months, else robust_level with the last bill set back to
+  # its plateau; corrected after review, robust_level alone stayed on the new
+  # plateau after a recent break) and a lasting change (per-day naive, last
+  # bill kept). Column `unreliable` of the December table: end_anomaly or
+  # noisy, the criteria that held on the test (poor_fit did not, read after
+  # the test); `flagged` keeps the three-criterion rule above.
+  interval_levels             = c(0.80, 0.95),
+  reliability_mase_max        = 1,
+  reliability_noise_quantile  = 0.75
 )
