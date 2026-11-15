@@ -1,5 +1,5 @@
 # Step 7: validation of the panel method by anomaly injection, choice of K
-# and of the penalty, comparison with the Hampel filter. About 35 minutes on
+# and of the penalty, comparison with the Hampel filter. About 45 minutes on
 # 6 cores. Self-contained: the reference segmentation is refitted here.
 # Run from the project root: Rscript scripts/05_calibrate.R
 source("R/config.R")

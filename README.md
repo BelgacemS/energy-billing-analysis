@@ -21,7 +21,7 @@ From the project root:
 
 ```
 Rscript run_all.R                                  # tables, figures and results in outputs/
-Rscript -e 'testthat::test_dir("tests/testthat")'  # unit tests
+Rscript -e "testthat::test_dir('tests/testthat')"  # unit tests
 quarto render report/rapport.qmd                   # report/rapport.pdf
 ```
 
@@ -36,7 +36,7 @@ $env:DATA_PATH="C:\path\to\file.csv"; Rscript run_all.R   # Windows PowerShell
 
 ## Pipeline
 
-`run_all.R` runs the scripts in this order; each one reads the outputs of the previous ones from `outputs/results/`.
+`run_all.R` runs the scripts in this order. Three of them reuse earlier results from `outputs/results/`: `04_suspects.R` (from 02 and 03), `08_select.R` (from 07) and `09_forecast.R` (from 08).
 
 | Script | Step of `PLAN.md` | Main outputs |
 |---|---|---|
@@ -51,7 +51,7 @@ $env:DATA_PATH="C:\path\to\file.csv"; Rscript run_all.R   # Windows PowerShell
 | `08_select.R` | 10, site classes and selection by class | `tables/selection_by_class.csv` |
 | `09_forecast.R` | 11, test months and December 2021 forecast | `tables/forecast_dec2021.csv` |
 
-Choice rules (thresholds, penalty, selection, intervals) are set in `R/config.R` and were written before each first run. The test months (June to November 2021) are only read by `09_forecast.R`.
+Choice rules (thresholds, penalty, selection, intervals) are set in `R/config.R` and were written before each first run. The test months (June to November 2021) are used as forecast targets only in `09_forecast.R`; the forecasting scripts 06 to 08 stop before them.
 
 ## Layout
 
