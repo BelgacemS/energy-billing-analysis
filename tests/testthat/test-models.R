@@ -82,7 +82,8 @@ test_that("arima_kind sorts auto.arima labels", {
 test_that("break_diff_null_rate is a share, zero for walks too smooth to break", {
   seg <- list(cost = "biweight", penalty = "MBIC", plateau_min = 3, K = 3)
   set.seed(5)
-  expect_equal(break_diff_null_rate(1e-4, 29, 3, seg, 0.10, 0.05), 0)  # no 10 % break possible
-  r <- break_diff_null_rate(0.1, 29, 3, seg, 0.10, 0.05)
+  smooth <- function(n) stats::rnorm(n, sd = 1e-4)
+  expect_equal(break_diff_null_rate(smooth, 29, 3, seg, 0.10, 0.05), 0)  # no 10 % break possible
+  r <- break_diff_null_rate(function(n) stats::rnorm(n, sd = 0.1), 29, 3, seg, 0.10, 0.05)
   expect_true(r >= 0 && r <= 1)
 })

@@ -109,13 +109,13 @@ arima_diagnosis <- function(fit, y, regime, alpha) {
              stringsAsFactors = FALSE)
 }
 
-#' Share of pure random walks (no break) flagged as break-driven
-#' differencing: `reps` walks of length `n` with innovation sd `sd`, segmented
-#' and diagnosed as the sites are (D = 0 variant). Measures how often the
+#' Share of random walks flagged as break-driven differencing: `reps` walks
+#' of length `n` whose increments come from `draw(n)`, segmented and
+#' diagnosed as the sites are (D = 0 variant). Measures how often the
 #' criterion fires when differencing is the right model.
-break_diff_null_rate <- function(sd, n, reps, seg_args, min_change, alpha) {
+break_diff_null_rate <- function(draw, n, reps, seg_args, min_change, alpha) {
   hits <- vapply(seq_len(reps), function(r) {
-    y <- stats::ts(cumsum(stats::rnorm(n, sd = sd)), frequency = 12)
+    y <- stats::ts(cumsum(draw(n)), frequency = 12)
     seg <- do.call(segment_series, c(list(as.numeric(y)), seg_args))
     br <- seg$breaks
     large <- br$index[abs(exp(br$level_after - br$level_before) - 1) > min_change]

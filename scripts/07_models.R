@@ -1,5 +1,5 @@
 # Step 9: course models site by site (SES, ETS, auto.arima) on the validation
-# months, and diagnosis of auto.arima. About 3 minutes.
+# months, and diagnosis of auto.arima. About 4 minutes.
 # Run from the project root: Rscript scripts/07_models.R
 source("R/config.R")
 source("R/load.R")
@@ -115,16 +115,19 @@ degenerate_models <- table(diag_ord$model[diag_ord$degenerate & diag_ord$variant
 n_pre_months <- length(unique(pre$month))
 lb_lag <- unique(diag_ord$lb_lag)
 
-# The break criterion under the null: pure random walks with the noise of
-# each ordinary site (D = 0 variant). Expected number of sites flagged
-# although differencing is the right model.
+# The break criterion on random walks (D = 0 variant), two nulls per
+# ordinary site (see R/config.R): expected number of sites flagged although
+# differencing is the right model.
 set.seed(config$break_null_seed)
-null_rate <- vapply(split(pre[!pre$site %in% big, ], pre$site[!pre$site %in% big]), function(d) {
-  d <- d[order(d$month), ]
-  break_diff_null_rate(stats::mad(diff(log(d$kwh_per_day))), nrow(d), config$break_null_reps,
-                       seg_args, config$level_shift_min, config$ljung_box_alpha)
-}, numeric(1))
-break_null_expected <- sum(null_rate)
+null_rate <- do.call(rbind, lapply(split(pre[!pre$site %in% big, ], pre$site[!pre$site %in% big]),
+                                   function(d) {
+  inc <- diff(log(d$kwh_per_day[order(d$month)]))
+  run <- function(draw) break_diff_null_rate(draw, nrow(d), config$break_null_reps, seg_args,
+                                             config$level_shift_min, config$ljung_box_alpha)
+  c(gaussian_mad = run(function(n) stats::rnorm(n, sd = stats::mad(inc))),
+    bootstrap = run(function(n) sample(inc, n, replace = TRUE)))
+}))  # (sites, nulls)
+break_null_expected <- colSums(null_rate)
 
 # ---- Figure ------------------------------------------------------------------
 labels <- c(naive_per_day = "Naïve par jour", ses = "Lissage exponentiel simple", ets = "ETS",
@@ -145,9 +148,10 @@ save_fig(p, "backtest_models")
 # naive (mean validation MASE 0.95): SES 1.02, ETS 1.04, auto.arima without
 # seasonal difference 1.16, default auto.arima 1.27; the naive is best in
 # 10 of 11 months (SES 1.420 against 1.437 in May 2021), and the pooled
-# rule keeps it. The models mostly rebuild the naive: SES alpha >= 0.95 in 76 % of the fits, ETS(A,N,N) (that
-# is SES) in 91 %, ARIMA(0,1,0) without drift (the per-day naive itself) in
-# 37 % (default) and 42 % (D = 0) of the auto.arima fits. Every other kind
+# rule keeps it. The models mostly rebuild the naive: SES alpha >= 0.95 in
+# 75 % of the fits, ETS(A,N,N) (that is SES) in 91 %, ARIMA(0,1,0)
+# without drift (the per-day naive itself) in 37 % (default) and 42 %
+# (D = 0) of the auto.arima fits. Every other kind
 # of fit does worse than the naive on the same site-months (D = 0 variant,
 # MASE of the model against the naive): reversion to a mean 1.78 / 1.31,
 # drift 1.06 / 0.76, other AR or MA terms 0.63 / 0.47; in the default
@@ -160,11 +164,12 @@ save_fig(p, "backtest_models")
 # orders (44 random walks without drift, i.e. the naive, 6 with drift, 3
 # constant means, 1 with d = 2), 41 sites whose differencing disappears
 # once the breaks are removed, 5 with autocorrelated residuals (Ljung-Box on
-# 5 lags has little power on 29 months), no failed fit. The break criterion
-# overstates: on pure random walks with the noise of each site it would
-# flag 10.6 sites on average (the segmentation also cuts a random walk into
-# plateaus), so about 30 of the 41 go beyond what a random walk produces. 71 of the 90 sites are flagged; auto.arima errs
-# 1.25 times as much as the naive on them, 1.11 times on the others.
+# 5 lags has little power on 29 months), no failed fit. The break
+# criterion cannot tell a break from a random walk: on random walks it
+# would flag 8.2 sites with Gaussian increments of MAD scale and 35.5 with
+# each site's own increments resampled, against 41 observed. 71 of the 90
+# sites are flagged; auto.arima errs 1.25 times as much as the naive on
+# them, 1.11 times on the others.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(accuracy, file.path(config$tables_dir, "models_accuracy.csv"), row.names = FALSE)

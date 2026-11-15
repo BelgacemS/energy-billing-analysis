@@ -181,9 +181,11 @@ config <- list(
   # - a fit that failed during the backtest.
   ljung_box_alpha    = 0.05,
   # Added after the review of step 9, rule above unchanged: rate at which the
-  # break criterion fires on pure random walks (no break) with the noise of
-  # each ordinary site (sd = MAD of its monthly log differences), to read the
-  # observed count as an upper bound.
+  # break criterion fires on random walks, for each ordinary site, under two
+  # nulls that bracket the truth: Gaussian increments with sd = MAD of its
+  # monthly log differences (the MAD drops the large jumps, so too few
+  # breaks) and its own increments resampled with replacement (the jumps of
+  # real breaks count as ordinary increments, so too many).
   break_null_reps = 10,
   break_null_seed = 2021
 )
