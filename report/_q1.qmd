@@ -37,9 +37,13 @@ chg <- chg[order(-abs(chg$change)), ]
 n_top <- 15
 n_chg <- 10
 ty <- lf$types
+stopifnot(cfg$pair_tolerance == cfg$level_shift_min)
+noise_med <- with(read_table("site_summary"), median(volatility[!big]) / sqrt(2))  # noise as defined in part 1
 ind_mid <- ord[ord$list == "indeterminate" & !ord$edge & ord$month < max(ord$month) - 365, ]
 ind_mid <- ind_mid[order(-abs(ind_mid$z)), ]
 stopifnot(nrow(ind_mid) > 0, all(ind_mid$z[ind_mid$site == ind_mid$site[1]] < 0))
+im <- ind_mid[ind_mid$site == ind_mid$site[1], ]
+im <- im[order(im$month), ]
 det <- function(type, size) mean(cal$detection$rate[cal$detection$type == type & cal$detection$size == size])
 hd <- function(type, size) {
   h <- cal$hampel
@@ -62,9 +66,14 @@ tab_sus <- function(d) {
 ```{r}
 #| include: false
 leap <- format(res$periods$end, "%Y-%m-%d") == "2020-02-28" & format(res$periods$begin, "%d") == "01"
+# A partial period billed at a full month: the other irregular bill.
+half <- res$periods[!leap, ]
+half$month_days <- days_in_month(half$month)
+half_exp <- pan$panel$expected_kwh[pan$panel$site == half$site[1] & pan$panel$month == half$month[1]]
+if (nrow(half) == 1) stopifnot(half$billed_days < half$month_days / 2 + 2, abs(half$kwh / half_exp - 1) < 0.1)
 ```
 
-`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire (@tbl-periods) : elles sont à vérifier d'office. `r if (any(leap)) paste0("Pour ", res$periods$site[leap][1], ", seul le 29 février 2020 manque : la période s'arrête au 28 alors que l'année est bissextile.") else ""` Aucun site n'a de montant nul ou négatif, ni deux factures pour le même mois. `r res$repeats$observed` factures reprennent exactement le montant du mois précédent, mais c'est à peu près ce que le hasard produit (environ `r num(res$repeats$expected, 0)` attendues) : rien n'indique une facturation estimée.
+`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire (@tbl-periods) : elles sont à vérifier d'office. `r if (any(leap)) paste0("Pour ", res$periods$site[leap][1], ", seul le 29 février 2020 manque : la période s'arrête au 28 alors que l'année est bissextile.") else ""` `r if (nrow(half) == 1) paste0("Pour ", half$site, ", la facture ne couvre que ", half$billed_days, " jours, du ", fr_date(half$begin), " au ", fr_date(half$end), ", mais son montant (", num(half$kwh), " kWh) est celui d'un mois complet (", num(half_exp), " kWh attendus pour le mois) : soit les dates sont fausses, soit un mois entier a été facturé pour un demi-mois, environ ", num(half$kwh - half_exp * half$billed_days / half$month_days), " kWh de trop.") else ""` Aucun site n'a de montant nul ou négatif, ni deux factures pour le même mois. `r res$repeats$observed` factures reprennent exactement le montant du mois précédent, mais c'est à peu près ce que le hasard produit (environ `r num(res$repeats$expected, 0)` attendues) : rien n'indique une facturation estimée.
 
 ```{r}
 #| label: tbl-periods
@@ -114,7 +123,7 @@ Chaque facture hors palier reçoit un type, selon la forme de l'écart dans le t
 - **indéterminé** : écart en fin de série, dont on ne voit pas encore la suite, ou qui ne revient pas à son palier ;
 - **période irrégulière** : la facture ne couvre pas exactement son mois.
 
-La transition, montée progressive vers un nouveau palier, est affichée sur les graphiques mais n'est pas listée. Chaque ligne reçoit un écart en kWh et un niveau de confiance, faible dans les `r cfg$edge_months` premiers et derniers mois. Nous rangeons ensuite les types en trois listes (@tbl-lists), car ils n'appellent pas la même action : une erreur probable se vérifie auprès du fournisseur, un changement de niveau se confirme auprès du responsable du site.
+La transition, montée progressive vers un nouveau palier, est affichée sur les graphiques mais n'est pas listée. Chaque ligne reçoit un écart en kWh et un niveau de confiance, faible dans les `r cfg$edge_months` premiers et derniers mois. Ces seuils ont été fixés avant l'analyse et n'ont pas été ajustés ensuite : `r pct(cfg$level_shift_min)` pour un changement de niveau et pour la tolérance d'une paire compensée, soit environ `r num(cfg$level_shift_min / noise_med)` fois le bruit médian d'un site (`r pct(noise_med, 1)` par mois), donc nettement au-dessus des fluctuations ordinaires ; `r cfg$edge_months` mois de bord, parce qu'un palier dure au moins `r pan$config$plateau_min_months` mois et qu'au début ou à la fin de la série son niveau repose sur moins de factures. Nous rangeons ensuite les types en trois listes (@tbl-lists), car ils n'appellent pas la même action : une erreur probable se vérifie auprès du fournisseur, un changement de niveau se confirme auprès du responsable du site.
 
 ```{r}
 #| label: tbl-lists
@@ -138,6 +147,8 @@ knitr::kable(data.frame(
   check.names = FALSE), align = "lrrl")
 ```
 
+`r if (nrow(sus$big) == 0) "Les deux gros sites passent par la même détection, avec leur propre effet du mois : aucune de leurs factures n'est signalée." else ""`
+
 **Erreurs probables.** Elles totalisent `r ks(lst("error", "over_kwh"))` kWh au-dessus de l'attendu et `r ks(lst("error", "under_kwh"))` kWh en dessous, soit `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires. Le @tbl-errors donne les `r n_top` plus gros écarts ; la liste complète des factures signalées est disponible sur demande. La plus forte sous-facturation ponctuelle, `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])` (`r num(err$kwh[err$type == "point"][1])` kWh facturés contre `r num(err$expected_kwh[err$type == "point"][1])` attendus), n'a qu'une confiance `r clab(err$confidence[err$type == "point"][1])` : c'est `r if (err$edge[err$type == "point"][1]) "un des premiers mois de la série, où le niveau du site est moins bien connu" else "un mois où le niveau du site est moins bien connu"`.
 
 ```{r}
@@ -147,7 +158,7 @@ knitr::kable(data.frame(
 knitr::kable(tab_sus(head(err, n_top)), align = "lllrrrl", row.names = FALSE)
 ```
 
-La liste des indéterminés contient aussi une forte sous-facturation au milieu de la série : `r ind_mid$site[1]` en `r mlist(ind_mid$month[ind_mid$site == ind_mid$site[1]])`, de `r num(min(abs(ind_mid$z[ind_mid$site == ind_mid$site[1]])))` à `r num(max(abs(ind_mid$z[ind_mid$site == ind_mid$site[1]])))` fois le bruit sous l'attendu, classée indéterminée parce que le site ne revient pas ensuite à son ancien palier. Elle est à vérifier en priorité.
+La liste des indéterminés contient aussi une forte sous-facturation au milieu de la série : `r ind_mid$site[1]` en `r mlist(im$month)`, facturé `r paste(num(im$kwh), collapse = " et ")` kWh contre `r paste(num(im$expected_kwh), collapse = " et ")` attendus (environ `r pct(1 - sum(im$kwh) / sum(im$expected_kwh))` de moins), classée indéterminée parce que le site ne revient pas ensuite à son ancien palier. Elle est à vérifier en priorité.
 
 **Changements à confirmer.** Leur écart mesure la hauteur de la marche entre deux paliers, pas un écart de facturation ; « Commun » signale un mois où plusieurs sites changent de niveau en même temps. Ils ressemblent davantage à des évolutions des sites (équipement, raccordement, contrat) qu'à des erreurs, sans que les factures seules permettent de trancher. Le @tbl-changes donne les `r n_chg` plus grands. `r ty[["network_change"]]` des `r lst("change", "bills")` changements tombent un mois où plusieurs sites changent de niveau dans le même sens : c'est une indication, pas une preuve, car le test est fait mois par mois (voir les limites).
 
@@ -156,7 +167,7 @@ La liste des indéterminés contient aussi une forte sous-facturation au milieu 
 #| tbl-cap: "Changements de niveau à confirmer : les plus grands (sites ordinaires, kWh)."
 #| tbl-colwidths: [13, 12, 16, 22, 15, 22]
 knitr::kable(data.frame(Site = chg$site, Mois = fr_month(chg$month), Type = unname(short[chg$type]),
-                        `Ancien niveau` = num(chg$expected_kwh), `Facturé` = num(chg$kwh),
+                        `Ancien niveau` = num(chg$expected_kwh), `Nouveau niveau` = num(chg$expected_kwh * (1 + chg$change)),
                         Changement = pct(chg$change, 0, signed = TRUE), check.names = FALSE)[seq_len(n_chg), ],
              align = "lllrrr", row.names = FALSE)
 ```
@@ -196,7 +207,7 @@ k254_2020 <- range(kd("0254BB", paste0("2020-", sprintf("%02d", 1:12))))
 
 Nous avons regardé de près les sites qui nous avaient frappés au premier examen des données.
 
-- **0089KO.** Juin et août 2019 forment une paire compensée : une facture très basse (`r num(c89$kwh[1])` kWh), puis une très haute (`r num(c89$kwh[2])` kWh). Le site passe à la même période sur un niveau plus élevé. Nous retenons l'hypothèse qui valide la paire : le nouveau niveau commence dès juin. De juin à août, le site aurait alors dû consommer `r num(p89[["expected_after"]])` kWh, contre `r num(p89[["billed"]])` facturés : le rattrapage d'août compense la sous-facturation de juin et juillet, à `r num(p89[["expected_after"]] - p89[["billed"]])` kWh près (`r pct(1 - p89[["ratio"]])`) en défaveur du fournisseur. Si le niveau n'avait changé qu'en août, il y aurait au contraire `r num(p89[["billed"]] - p89[["expected_own"]])` kWh facturés en trop : un relevé du compteur permettrait de trancher.
+- **0089KO.** Juin et août 2019 forment une paire compensée : une facture très basse (`r num(c89$kwh[1])` kWh), puis une très haute (`r num(c89$kwh[2])` kWh). Le site passe à la même période sur un niveau plus élevé, et la date de ce changement décide du solde. Si le nouveau niveau commence dès juin, le site aurait dû consommer `r num(p89[["expected_after"]])` kWh de juin à août, contre `r num(p89[["billed"]])` facturés : le rattrapage d'août compense la sous-facturation de juin et juillet à `r num(p89[["expected_after"]] - p89[["billed"]])` kWh près. S'il ne commence qu'en août, comme le suggère la facture de juillet, restée à l'ancien niveau, et comme le retiennent les attendus du @tbl-errors, `r num(p89[["billed"]] - p89[["expected_own"]])` kWh ont été facturés en trop. Les factures seules ne permettent pas de trancher ; un relevé du compteur le permettrait.
 - **1067KO.** Changement durable en juillet 2019 (`r pct(c1067$change, signed = TRUE)`).
 - **1088KO, 1978KO et 1986KO.** Les trois montent en `r mlist(ramp("1088KO")$month)` vers un palier nettement plus haut (`r pct(r88$change, signed = TRUE)`, `r pct(r78$change, signed = TRUE)` et `r pct(r86$change, signed = TRUE)`). Ce sont trois changements durables. Avec trois sites seulement, nous ne pouvons pas distinguer un événement commun d'une coïncidence.
 - **0254BB.** En 2019, le site alterne : haut en janvier et février (`r num(k254_winter[1])` et `r num(k254_winter[2])` kWh par jour), plus bas au printemps, de nouveau haut en juillet et août (`r num(k254_summer[1])` et `r num(k254_summer[2])`), puis bas à partir de l'automne (de `r num(k254_2020[1])` à `r num(k254_2020[2])` kWh par jour en 2020). Deux pics par an, en hiver et en été, évoquent une consommation saisonnière propre au site, disparue fin 2019, plutôt qu'une suite d'erreurs. Ses changements restent dans la liste à confirmer.
@@ -206,4 +217,4 @@ Ces lignes sont des factures à vérifier, pas des erreurs avérées : une factu
 
 ## Réponse : y a-t-il des erreurs de facturation ?
 
-Oui, probablement, mais peu, et pour de faibles montants. `r lst("error", "bills")` factures, sur `r lst("error", "sites")` sites, ont le profil d'une erreur, pour `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires, et une partie d'entre elles sera infondée (environ `r num(fa_expected)` fausses alertes attendues sur l'ensemble des listes). Les plus nettes sont les `r nrow(res$periods)` factures qui ne couvrent pas leur mois et la sous-facturation suivie d'un rattrapage de 0089KO en 2019. L'essentiel des signalements, `r lst("change", "bills")` changements de niveau sur `r lst("change", "sites")` sites, ressemble davantage à des évolutions des sites qu'à des erreurs, et se confirme sur le terrain plutôt qu'auprès du fournisseur. La méthode voit rarement les petits écarts, de quelques pour cent ; à partir de 20 %, elle en signale près de neuf sur dix.
+Oui, probablement, mais peu, et pour de faibles montants. `r lst("error", "bills")` factures, sur `r lst("error", "sites")` sites, ont le profil d'une erreur, pour `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires, et une partie d'entre elles sera infondée (environ `r num(fa_expected)` fausses alertes attendues sur l'ensemble des listes). Le « oui » repose surtout sur quelques cas nets : la facture de `r half$site` qui couvre un demi-mois pour le montant d'un mois, la paire sous-facturation puis rattrapage de 0089KO en 2019, dont le solde reste à établir, la sous-facturation de `r ind_mid$site[1]` en 2019 et, avec moins de certitude parce qu'elle tombe en début de série, celle de `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])`. Les petits écarts isolés de la liste peuvent, eux, être en partie de fausses alertes. L'essentiel des signalements, `r lst("change", "bills")` changements de niveau sur `r lst("change", "sites")` sites, ressemble davantage à des évolutions des sites qu'à des erreurs, et se confirme sur le terrain plutôt qu'auprès du fournisseur. La méthode voit rarement les petits écarts, de quelques pour cent ; à partir de 20 %, elle en signale près de neuf sur dix.
