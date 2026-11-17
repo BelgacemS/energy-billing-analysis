@@ -6,176 +6,79 @@ acc <- bl$accuracy
 a <- function(scope, method, col) acc[acc$scope == scope & acc$method == method, col]
 tg <- bl$targets
 n_val <- length(tg)
-dec20 <- bl$december
-dm <- function(method) dec20$mase[dec20$method == method]
-abs_big <- a("big", "naive_per_day", "abs_kwh")
-abs_all <- a("all", "naive_per_day", "abs_kwh")
-bt_pd <- bl$backtest[bl$backtest$method == "naive_per_day" & !bl$backtest$big, ]
-worst <- bt_pd[which.max(bt_pd$rel_error), ]
-worst_share <- worst$rel_error / sum(bt_pd$rel_error)
-stopifnot(bl$best_baseline == "naive_per_day")
-bs <- bl$big_signed
-stopifnot(bs[["0698BR"]] > 0, bs[["0998BR"]] < 0)  # the sentence on the big sites
-by_m <- bl$by_month
-w <- reshape(by_m[c("month", "method", "mase")], idvar = "month", timevar = "method",
-             direction = "wide")
-pd_beats_snaive <- sum(w$mase.naive_per_day < w$mase.snaive_per_day)
+macc <- mo$accuracy
+ma <- function(scope, method, col) macc[macc$scope == scope & macc$method == method, col]
+mo_ord <- mo$backtest[!mo$backtest$big, ]
+alpha <- as.numeric(sub("SES alpha=", "", mo_ord$info[mo_ord$method == "ses"]))
+osh <- mo$orders_share
+os <- function(method, col) osh[osh$method == method, col]
+dg <- mo$diagnosis
+dg <- dg[!dg$big & dg$variant == "arima_noseason", ]
+stopifnot(mo$pooled_choice == "naive_per_day", bl$best_baseline == "naive_per_day")
+n_rw <- mo$degenerate_models[["ARIMA(0,1,0)(0,0,0)[12]"]]
 ```
 
 ## Protocole d'évaluation
 
-La précision d'une méthode se mesure sur des mois qu'elle n'a pas vus. On applique la validation croisée à origine glissante du cours : pour prévoir le mois $t$, la méthode ne dispose que des factures jusqu'au mois $t-1$, puis l'origine avance d'un mois. L'horizon est d'un mois, celui de la question posée. Tout ce qui est estimé à partir des données (effet du mois, paliers, classes de sites, quantiles d'erreur) est recalculé à chaque origine avec les seules factures disponibles ; un test automatique vérifie que modifier les factures postérieures à une origine ne change pas la prévision faite à cette origine.
+Une méthode de prévision se juge sur des mois qu'elle n'a pas vus. Nous appliquons la validation croisée à origine glissante du cours : pour prévoir un mois, la méthode ne dispose que des factures des mois précédents, puis l'origine avance d'un mois. Tout ce qui est estimé sur les données (effet du mois, paliers) est recalculé à chaque origine, et un test automatique vérifie qu'aucune facture future n'est utilisée.
 
-Les `r n_val` mois de `r mname(min(tg))` à `r mname(max(tg))` servent de validation : c'est sur eux que se font tous les choix de méthode. Ils comprennent décembre 2020, le seul mois de même nature que le mois à prévoir. Les `r length(bl$test_targets)` mois de `r mname(min(bl$test_targets))` à `r mname(max(bl$test_targets))` sont mis de côté et ne seront lus qu'une fois, avec la méthode retenue, pour annoncer la précision attendue sans qu'elle ait servi à choisir.
+Les `r n_val` mois de `r mname(min(tg))` à `r mname(max(tg))` servent de **validation** : c'est sur eux que nous faisons tous les choix. Ils comprennent décembre 2020, le seul mois de même nature que le mois à prévoir. Les `r length(bl$test_targets)` mois de `r mname(min(bl$test_targets))` à `r mname(max(bl$test_targets))` forment le **test** : nous ne les avons lus qu'une fois, à la fin, pour mesurer la précision de la méthode retenue. La précision est mesurée par la MASE (Hyndman et Koehler, 2006) : l'erreur d'une prévision divisée par l'erreur habituelle de la prévision naïve sur le passé du site. Elle permet de comparer des sites de tailles très différentes ; une MASE inférieure à 1 bat la naïve.
 
-L'erreur d'une prévision est l'écart en kWh entre la facture et la prévision. Pour comparer des sites dont la facture va de quelques centaines à plusieurs centaines de milliers de kWh, on la rapporte à l'erreur habituelle de la méthode naïve par jour sur l'historique du site : c'est la MASE (Hyndman et Koehler, 2006). Le cours la définit par rapport à la naïve saisonnière ; la saisonnalité des sites étant faible (partie descriptive), la référence naturelle est ici la naïve simple, sur la consommation par jour. Une MASE de 1 signifie une erreur égale à l'erreur moyenne de cette référence sur l'historique du site. L'erreur relative (écart rapporté à la facture) est donnée aussi parce qu'elle se lit directement, mais elle explose quand la facture est petite, comme le note le cours : les choix reposent donc sur la MASE.
-
-La règle de choix est fixée avant de tester le moindre modèle : on retient la méthode de plus faible MASE moyenne en validation ; si une méthode plus simple fait moins de `r pct(bl$config$selection_tolerance)` moins bien, c'est elle qu'on garde. Le choix se fait par groupe de sites et non site par site : `r n_val` prévisions par site sont trop peu pour départager des méthodes sans retenir surtout le hasard.
-
-## Méthodes de référence
-
-Trois méthodes dérivées des méthodes simples du cours servent de références : la naïve brute (la prochaine facture égale la dernière), la naïve par jour (la consommation par jour du dernier mois, multipliée par le nombre de jours du mois prévu) et la naïve saisonnière par jour (la consommation par jour du même mois un an plus tôt). Une méthode plus élaborée qui ne fait pas mieux qu'elles ne vaut pas sa complexité.
+## Méthodes comparées
 
 ```{r}
-#| label: tbl-baselines
-#| tbl-cap: "Précision des méthodes de référence en validation (sites ordinaires, prévisions à un mois). Erreur totale : somme des écarts absolus, en kWh."
-#| tbl-colwidths: [36, 10, 20, 16, 18]
-ord <- acc[acc$scope == "ordinary", ]
-ord <- ord[order(ord$mase), ]
-knitr::kable(data.frame(
-  `Méthode` = unname(bl$labels[ord$method]), MASE = num(ord$mase, 2),
-  `Erreur médiane` = pct(ord$rel_median, 1),
-  `90e centile` = pct(ord$rel_p90, 1),
-  `Erreur totale` = num(ord$abs_kwh),
-  check.names = FALSE), align = "lrrrr")
+#| label: tbl-methods
+#| tbl-cap: "Précision en validation des méthodes de référence et des modèles du cours (sites ordinaires, prévision à un mois)."
+rows <- data.frame(
+  `Méthode` = c("Naïve brute (dernière facture)", "Naïve saisonnière par jour (même mois un an plus tôt)",
+               "Naïve par jour (dernier mois, ramené au jour)", "Lissage exponentiel simple", "ETS",
+               "auto.arima sans différence saisonnière", "auto.arima, réglages par défaut"),
+  MASE = num(c(a("ordinary", "naive_raw", "mase"), a("ordinary", "snaive_per_day", "mase"),
+               a("ordinary", "naive_per_day", "mase"), ma("ordinary", "ses", "mase"),
+               ma("ordinary", "ets", "mase"), ma("ordinary", "arima_noseason", "mase"),
+               ma("ordinary", "arima", "mase")), 2),
+  `Erreur médiane` = pct(c(a("ordinary", "naive_raw", "rel_median"), a("ordinary", "snaive_per_day", "rel_median"),
+                          a("ordinary", "naive_per_day", "rel_median"), ma("ordinary", "ses", "rel_median"),
+                          ma("ordinary", "ets", "rel_median"), ma("ordinary", "arima_noseason", "rel_median"),
+                          ma("ordinary", "arima", "rel_median")), 1),
+  check.names = FALSE)
+knitr::kable(rows, align = "lrr")
 ```
 
-```{r}
-#| label: fig-baselines
-#| fig-cap: "MASE moyenne des méthodes de référence par mois prévu (sites ordinaires)."
-fig("backtest_baselines")
-```
+Trois méthodes simples du cours servent de référence, puis nous ajustons les modèles du cours site par site sur le logarithme des kWh par jour : lissage exponentiel simple, ETS (choisi par le critère AICc) et auto.arima (Hyndman et Khandakar, 2008). Dans ses réglages par défaut, auto.arima peut ajouter une différence saisonnière et produire un SARIMA ; nous l'avons aussi testé sans différence saisonnière, puisque la saison est faible. Le résultat est net (@tbl-methods) : **la naïve par jour est la meilleure**, avec une erreur médiane de `r pct(a("ordinary", "naive_per_day", "rel_median"), 1)`. Ramener la consommation au jour corrige l'effet de la longueur du mois, et reprendre le dernier niveau suit les changements de palier, que la naïve saisonnière ignore.
 
-La naïve par jour est nettement la meilleure des trois (@tbl-baselines) : MASE de `r num(a("ordinary", "naive_per_day", "mase"), 2)` et erreur médiane de `r pct(a("ordinary", "naive_per_day", "rel_median"), 1)` sur les sites ordinaires. Elle fait mieux que la naïve brute sur `r pct(bl$per_day_vs_raw[["better"]])` des factures et aussi bien sur `r pct(bl$per_day_vs_raw[["equal"]])`, les mois où le mois prévu a autant de jours que le précédent : ramener la consommation au jour retire l'effet de la longueur du mois, déjà mis en évidence dans la partie descriptive. Elle bat la naïve saisonnière `r if (pd_beats_snaive == n_val) paste('à chacun des', n_val, 'mois') else paste('pendant', pd_beats_snaive, 'des', n_val, 'mois')` (@fig-baselines), dont décembre 2020 (MASE de `r num(dm("naive_per_day"), 2)` contre `r num(dm("naive_raw"), 2)` pour la naïve brute et `r num(dm("snaive_per_day"), 2)` pour la saisonnière). Un niveau vieux d'un an ignore les changements de niveau, fréquents sur ces sites, et ce qu'il gagne sur l'effet du mois est trop faible pour compenser : la naïve saisonnière ne l'emporte que sur `r bl$snaive_wins` sites ordinaires.
+Aucun modèle du cours ne fait mieux, et la raison est simple : le plus souvent, ils retrouvent la naïve. Le paramètre $\alpha$ du lissage exponentiel vaut au moins 0,95 dans `r pct(mean(alpha >= 0.95))` des ajustements, ce qui revient à reprendre la dernière valeur, et auto.arima choisit une marche aléatoire, dont la prévision est la naïve, dans `r pct(os("arima_noseason", "naive_like"))` des cas. Comme l'annonçait la partie descriptive, le niveau des sites dérive comme une marche aléatoire, et la naïve est alors la meilleure prévision possible. Quand auto.arima s'en écarte, il se trompe davantage, par exemple en prolongeant une tendance ou en revenant vers une moyenne calculée à travers des ruptures. Ce constat rejoint la compétition M3 : des méthodes élaborées ne prévoient pas forcément mieux que des méthodes simples (Makridakis et Hibon, 2000). Les deux gros sites font exception en validation, où auto.arima et ETS font mieux que la naïve (MASE `r num(ma("big", "arima_noseason", "mase"), 2)` et `r num(ma("big", "ets", "mase"), 2)` contre `r num(ma("big", "naive_per_day", "mase"), 2)`).
 
-L'erreur relative moyenne de la naïve par jour (`r pct(a("ordinary", "naive_per_day", "rel_mean"), 1)`) est très au-dessus de la médiane, tirée par une seule facture : celle de `r worst$site` en `r mname(worst$month)`, au mois de la chute de consommation du site (partie Q1). Les choix reposent donc sur la MASE.
-
-En kWh, l'erreur est concentrée sur les deux gros sites (`r num(abs_big)` des `r num(abs_all)` kWh d'erreur absolue totale), mais leur MASE (`r num(a("big", "naive_per_day", "mase"), 2)`) reste comparable à celle des autres sites. Par la règle de choix, la naïve par jour est la référence que les modèles des parties suivantes doivent battre.
-
-## Modèles du cours site par site
-
-```{r}
-#| include: false
-macc <- mo$accuracy
-ma <- function(scope, method, col) macc[macc$scope == scope & macc$method == method, col]
-mb <- mo$backtest
-mo_ord <- mb[!mb$big, ]
-alpha <- as.numeric(sub("SES alpha=", "", mo_ord$info[mo_ord$method == "ses"]))
-ets_ann <- mean(mo_ord$info[mo_ord$method == "ets"] == "ETS(A,N,N)")
-osh <- mo$orders_share
-os <- function(method, col) osh[osh$method == method, col]
-mwide <- reshape(mo$by_month[c("month", "method", "mase")], idvar = "month", timevar = "method",
-                 direction = "wide")
-naive_first <- sum(apply(mwide[, -1], 1, function(x) x[["mase.naive_per_day"]] <= min(x)))
-dg <- mo$diagnosis
-dg <- dg[!dg$big & dg$variant == "arima_noseason", ]
-dm_ <- mo$degenerate_models
-dmod <- function(label) if (label %in% names(dm_)) dm_[[label]] else 0L
-n_rw <- dmod("ARIMA(0,1,0)(0,0,0)[12]")
-n_rwd <- dmod("ARIMA(0,1,0)(0,0,0)[12] drift")
-n_mean <- dmod("ARIMA(0,0,0)(0,0,0)[12] intercept")
-n_d2 <- sum(dm_) - n_rw - n_rwd - n_mean
-stopifnot(sum(dm_) == sum(dg$degenerate))
-a_thr <- 0.95  # SES smoothing parameter read as "takes the last value"
-best_count <- names(which.max(mo$beats_naive))
-stopifnot(best_count == "arima_noseason")
-n_flag <- sum(dg$flagged)
-null_exp <- mo$break_null_expected
-years_pre <- mo$n_pre_months / 12
-n_rw_only <- sum(dg$reasons == "degenerate" & dg$model == "ARIMA(0,1,0)(0,0,0)[12]")
-pre_last <- max(mo$targets)
-pre_first <- rev(seq(pre_last, by = "-1 month", length.out = mo$n_pre_months))[1]
-fv <- mo$flag_vs_mase
-fv <- fv[fv$variant == "arima_noseason", ]
-ratio <- function(f) fv$val_mase[fv$flagged == f] / fv$naive_mase[fv$flagged == f]
-stopifnot(mo$pooled_choice == "naive_per_day", all(mo$n_fallback == 0))
-stopifnot(ratio(TRUE) > ratio(FALSE), ratio(FALSE) > 1)
-km <- mo$kind_mase
-sbm <- mo$seasonal_by_month
-kmv <- function(method, kind, col) km[km$method == method & km$kind == kind, col]
-kpair <- function(method, kind) paste0(num(kmv(method, kind, "scaled_error"), 2), " contre ",
-                                       num(kmv(method, kind, "scaled_error_naive"), 2))
-nonnaive <- km[km$method == "arima_noseason" & km$kind != "naive", ]
-stopifnot(all(nonnaive$scaled_error > nonnaive$scaled_error_naive),
-          kmv("arima", "seasonal_diff", "scaled_error") > kmv("arima", "seasonal_diff", "scaled_error_naive"))
-mlab <- c(naive_per_day = "Naïve par jour", ses = "Lissage exponentiel simple", ets = "ETS",
-          arima = "auto.arima (réglages par défaut)",
-          arima_noseason = "auto.arima sans différence saisonnière")
-```
-
-Les modèles du cours sont ajustés site par site sur le logarithme des kWh par jour, de nouveau à chaque origine du protocole : le lissage exponentiel simple, le modèle ETS choisi automatiquement par le critère AICc parmi les modèles à composantes additives (sur une échelle logarithmique, une composante multiplicative ferait double emploi avec le logarithme) et auto.arima (Hyndman et Khandakar, 2008). La prévision du logarithme est ramenée en kWh par l'exponentielle, ce qui donne la médiane de la prévision, cohérente avec une erreur mesurée en valeur absolue. auto.arima est testé en deux variantes fixées à l'avance : ses réglages par défaut, où un test décide d'une différence saisonnière, et une variante sans différence saisonnière pour tous les sites sauf 0698BR, seul site dont la saison est nette (partie descriptive). Sur les `r length(mo$targets)` mois et les `r length(unique(mb$site))` sites, aucun ajustement n'a échoué.
-
-```{r}
-#| label: tbl-models
-#| tbl-cap: "Précision des modèles du cours en validation (sites ordinaires, prévisions à un mois). auto.arima (D = 0) : sans différence saisonnière. Erreur totale : somme des écarts absolus, en kWh."
-#| tbl-colwidths: [34, 10, 20, 16, 20]
-mo_tab <- macc[macc$scope == "ordinary", ]
-mo_tab <- mo_tab[order(mo_tab$mase), ]
-knitr::kable(data.frame(
-  `Méthode` = unname(replace(mlab, c("arima", "arima_noseason"),
-                              c("auto.arima (défaut)", "auto.arima (D = 0)"))[mo_tab$method]),
-  MASE = num(mo_tab$mase, 2),
-  `Erreur médiane` = pct(mo_tab$rel_median, 1), `90e centile` = pct(mo_tab$rel_p90, 1),
-  `Erreur totale` = num(mo_tab$abs_kwh), check.names = FALSE), align = "lrrrr")
-```
+Comme le veut la démarche de Box-Jenkins du cours, nous avons aussi vérifié les résidus d'auto.arima site par site, sur les `r mo$n_pre_months` mois qui précèdent le test. Le test de Ljung-Box ne détecte d'autocorrélation résiduelle que pour `r sum(dg$lb_reject)` des `r mo$n_ordinary` sites ordinaires (au seuil de `r pct(mo$config$ljung_box_alpha)`) : les résidus ressemblent à un bruit blanc. Avec si peu de mois, le test ne porte toutefois que sur `r mo$lb_lag` décalages et a peu de puissance. Surtout, pour `r sum(dg$degenerate)` sites, le modèle retenu n'a aucun terme autorégressif ni de moyenne mobile, et pour `r n_rw` d'entre eux c'est exactement une marche aléatoire, donc la prévision naïve elle-même.
 
 ```{r}
 #| label: fig-models
-#| fig-cap: "MASE moyenne des modèles du cours et de la naïve par jour, par mois prévu (sites ordinaires)."
+#| fig-cap: "MASE moyenne des modèles du cours et de la naïve par jour, par mois prévu (validation, sites ordinaires)."
 fig("backtest_models")
 ```
 
-Sur les sites ordinaires, aucun modèle du cours ne fait mieux que la naïve par jour (@tbl-models) : sa MASE de `r num(ma("ordinary", "naive_per_day", "mase"), 2)` reste la plus basse, devant le lissage exponentiel simple (`r num(ma("ordinary", "ses", "mase"), 2)`), ETS (`r num(ma("ordinary", "ets", "mase"), 2)`) et auto.arima (`r num(ma("ordinary", "arima_noseason", "mase"), 2)` sans différence saisonnière, `r num(ma("ordinary", "arima", "mase"), 2)` avec ses réglages par défaut). La naïve est première `r naive_first` mois sur `r length(mo$targets)` (@fig-models), et site par site, le modèle qui la bat le plus souvent, auto.arima sans différence saisonnière, ne la bat que sur `r mo$beats_naive[["arima_noseason"]]` des `r mo$n_ordinary` sites.
+La @fig-models montre que la naïve par jour reste devant presque chaque mois. L'écart de la variante par défaut d'auto.arima apparaît en 2021 : dès que l'historique dépasse 24 mois, elle ajoute une différence saisonnière pour une partie des sites, et se dégrade.
 
-Ce résultat s'explique par ce que les modèles apprennent. Le plus souvent, ils retrouvent la naïve : le paramètre $\alpha$ du lissage exponentiel simple vaut au moins `r num(a_thr, 2)` dans `r pct(mean(alpha >= a_thr))` des ajustements, ce qui revient à reprendre la dernière valeur ; ETS retient le lissage simple (ETS(A,N,N)) dans `r pct(ets_ann)` des cas ; auto.arima choisit une marche aléatoire sans dérive, ARIMA(0,1,0), dont la prévision est exactement la naïve, dans `r pct(os("arima_noseason", "naive_like"))` des ajustements sans différence saisonnière. La partie descriptive l'annonçait : le niveau des sites dérive d'un mois à l'autre comme une marche aléatoire, et la naïve est la prévision optimale d'une marche aléatoire. Quand auto.arima s'en écarte (retour vers une moyenne, dérive, autres termes autorégressifs ou de moyenne mobile), il fait moins bien que la naïve sur les mêmes sites et les mêmes mois. Dans ses réglages par défaut, il ajoute une différence saisonnière pour une grande partie des sites à partir de la prévision `r de(as.Date(names(sbm)[which(sbm > 0)[1]]))`, dès que l'historique dépasse 24 mois (règle interne du paquet), et c'est tout l'écart entre les deux variantes (@fig-models). Le constat rejoint la première conclusion de la compétition M3 : des méthodes statistiquement élaborées ne prévoient pas forcément mieux que des méthodes simples (Makridakis et Hibon, 2000).
-
-Les deux gros sites font exception : auto.arima dans sa variante sans différence saisonnière, qui la garde toutefois pour 0698BR, obtient une MASE de `r num(ma("big", "arima_noseason", "mase"), 2)`, et ETS `r num(ma("big", "ets", "mase"), 2)` ; tous deux font mieux que la naïve (`r num(ma("big", "naive_per_day", "mase"), 2)`). Avec deux sites seulement, ce gain reste à confirmer ; ces deux sites seront traités à part dans le choix final.
-
-auto.arima a été examiné site par site sur les factures `r de(pre_first)` à `r mname(pre_last)`, avec trois signes de mauvais fonctionnement fixés à l'avance. Pour la variante sans différence saisonnière, sur les `r mo$n_ordinary` sites ordinaires :
-
-- **ordres dégénérés** (aucun terme autorégressif ni moyenne mobile) : `r sum(dg$degenerate)` sites, dont `r n_rw` marches aléatoires sans dérive, qui reproduisent exactement la naïve, `r n_rwd` avec dérive, `r n_mean` moyennes constantes, qui ignorent tout changement de niveau, et `r n_d2` à double différence ;
-- **différenciation liée aux ruptures** : pour `r sum(dg$break_diff)` sites, la différenciation choisie disparaît quand on retire les changements de niveau de plus de `r pct(config$level_shift_min)` repérés par la segmentation. Le modèle traite alors chaque rupture comme un choc permanent, ce que fait aussi la naïve. Ce critère ne distingue toutefois pas une rupture d'une marche aléatoire : sur des marches aléatoires simulées pour chaque site, il en signale entre `r num(null_exp[["gaussian_mad"]], 0)` et `r num(null_exp[["bootstrap"]], 0)` selon la façon de les simuler, contre `r sum(dg$break_diff)` observés, et il ne permet donc pas de dire combien de différenciations sont dues aux ruptures ;
-- **résidus autocorrélés** (test de Ljung-Box au seuil de `r pct(mo$config$ljung_box_alpha)`) : `r sum(dg$lb_reject)` sites. Sur `r mo$n_pre_months` mois, le test ne porte que sur `r mo$lb_lag` décalages et détecte peu.
-
-Au moins un de ces signes touche `r n_flag` des `r mo$n_ordinary` sites, dont `r n_rw_only` seulement parce que le modèle retenu est la naïve elle-même. Ils ne séparent que faiblement les sites où auto.arima se dégrade : son erreur vaut `r num(ratio(TRUE), 2)` fois celle de la naïve sur les sites signalés, contre `r num(ratio(FALSE), 2)` fois sur les autres. Même sur ces derniers, il ne fait pas mieux que la naïve : ajusté automatiquement sur `r num(years_pre, 1)` ans de factures coupées de ruptures, il apprend peu de chose que la naïve ne capte déjà. Appliquée à l'ensemble des sites ordinaires, la règle de choix retient la naïve par jour. Le choix définitif se fait par groupe de sites, avec des variantes qui tiennent compte des ruptures, dans la section suivante.
-
-## Choix de la méthode par groupe de sites
+## Groupes de sites et choix de la méthode
 
 ```{r}
 #| include: false
 sp <- sel$profile
 ssel <- sel$selection
-k_ord <- sel$k
 sil <- sel$silhouette
 smase <- sel$ordinary_mase
 lab <- function(m) tolower(sel$labels[[m]])
 grp <- function(k) if (k == "big") "gros sites" else paste("groupe", k)
-sb <- sel$backtest[sel$backtest$class != "big", ]
-rw <- merge(sb[sb$method == "robust_level", c("site", "month", "scaled_error", "forecast", "billed")],
-            sb[sb$method == "naive_per_day", c("site", "month", "scaled_error")],
-            by = c("site", "month"), suffixes = c("", "_naive"))
-rw_better <- mean(rw$scaled_error < rw$scaled_error_naive)
-rw_worst <- rw[which.max(rw$scaled_error - rw$scaled_error_naive), ]
 ord_sel <- ssel[ssel$class != "big", ]
 other <- ord_sel[ord_sel$chosen != "naive_per_day", ]
 big_sel <- ssel[ssel$class == "big", ]
 ```
 
-La règle de choix s'applique par groupe de sites et non site par site : 11 mois de validation par site sont trop peu. Les `r mo$n_ordinary` sites ordinaires sont regroupés par classification hiérarchique (méthode de Ward) selon quatre caractéristiques de leur série corrigée de l'effet du mois : niveau, pente, bruit habituel et nombre de ruptures de plus de `r pct(config$level_shift_min)`. Elles sont mesurées sur les mois qui précèdent la validation, `r de(pre_first)` à `r mname(seq(config$validation_start, by = "-1 month", length.out = 2)[2])`, pour qu'aucun mois servant aux choix n'entre dans les groupes. Le nombre de groupes, `r k_ord`, est celui qui donne la meilleure silhouette moyenne entre `r min(as.integer(names(sil)))` et `r max(as.integer(names(sil)))` groupes. Elle reste faible (`r num(max(sil), 2)`, sur une échelle de −1 à 1) : les groupes découpent un ensemble assez continu plus qu'ils ne séparent des comportements tranchés. Le @tbl-classes décrit les groupes. Les deux gros sites forment un groupe à part. Le suffixe du nom n'est pas lié aux groupes (test exact de Fisher, p = `r num(sel$suffix_p, 2)`).
+Nous choisissons la méthode par groupe de sites, pas site par site : 11 mois de validation par site sont trop peu pour choisir. Nous regroupons les sites ordinaires par classification hiérarchique (méthode de Ward) selon quatre caractéristiques mesurées avant la validation : niveau, pente, bruit et nombre de ruptures. Nous obtenons `r sel$k` groupes (@tbl-classes), qui ne recoupent pas le suffixe du nom. La séparation reste modérée (silhouette `r num(max(sil), 2)`) : les sites forment plutôt un continuum que des familles tranchées. Les deux gros sites forment un groupe à part.
 
 ```{r}
 #| label: tbl-classes
-#| tbl-cap: "Groupes de sites ordinaires (valeurs médianes sur les mois avant la validation)."
+#| tbl-cap: "Groupes de sites ordinaires (valeurs médianes avant la validation)."
 #| tbl-colwidths: [9, 8, 13, 13, 11, 14, 32]
 knitr::kable(data.frame(Groupe = sp$class, Sites = sp$n, `kWh par jour` = num(sp$level_kwh_day),
                         `Pente par an` = pct(sp$slope, 0, signed = TRUE),
@@ -184,57 +87,40 @@ knitr::kable(data.frame(Groupe = sp$class, Sites = sp$n, `kWh par jour` = num(sp
              align = "lrrrrrl")
 ```
 
-Trois candidats s'ajoutent aux méthodes précédentes, recalculés à chaque origine avec les seules factures disponibles. La **naïve corrigée du mois** reprend la dernière consommation par jour et la ramène au mois à prévoir par l'effet commun du mois. Le **niveau robuste** lisse, par lissage exponentiel simple, le dernier palier du site, après avoir remplacé les factures hors palier par leur palier. La **combinaison** est la moyenne simple de ces deux prévisions et de la naïve par jour (Bates et Granger, 1969). L'effet du mois y est estimé sur les années civiles complètes : la moyenne mobile de la partie Q1 demande plus de mois que n'en ont les premières origines.
+Nous avons ajouté trois variantes aux méthodes précédentes : la naïve corrigée de l'effet du mois, un niveau robuste (lissage du dernier palier, en écartant les factures hors palier) et la moyenne de ces deux prévisions et de la naïve (Bates et Granger, 1969). Pour chaque groupe, la règle fixée à l'avance retient la méthode la plus précise, ou la plus simple si l'écart est de moins de `r pct(config$selection_tolerance)` (@tbl-select).
 
 ```{r}
 #| label: tbl-select
-#| tbl-cap: "MASE moyenne de validation par méthode et par groupe (en gras : méthode retenue par la règle)."
+#| tbl-cap: "MASE de validation par méthode et par groupe (en gras : méthode retenue)."
 m <- sel$mase[c(setdiff(rownames(sel$mase), "big"), "big"), names(sel$labels)]  # (groups, methods)
 cell <- matrix(num(m, 2), nrow(m), dimnames = dimnames(m))
-cell[cbind(ssel$class, ssel$chosen)[match(rownames(m), ssel$class), , drop = FALSE]] <-
-  paste0("**", cell[cbind(ssel$class, ssel$chosen)[match(rownames(m), ssel$class), , drop = FALSE]], "**")
+pick <- cbind(ssel$class, ssel$chosen)[match(rownames(m), ssel$class), , drop = FALSE]
+cell[pick] <- paste0("**", cell[pick], "**")
 tab <- data.frame(`Méthode` = unname(sel$labels), t(cell), check.names = FALSE)
 names(tab)[-1] <- ifelse(rownames(m) == "big", "Gros sites", rownames(m))
 knitr::kable(tab, align = paste0("l", strrep("r", nrow(m))), row.names = FALSE)
 ```
 
-Le @tbl-select donne la précision de chaque méthode par groupe. Sur l'ensemble des sites ordinaires, la naïve par jour reste la meilleure (MASE `r num(smase[["naive_per_day"]], 2)`), devant la `r lab("naive_adj")` (`r num(smase[["naive_adj"]], 2)`) et la combinaison (`r num(smase[["combination"]], 2)`). Corriger l'effet du mois n'aide pas : l'effet est faible et n'est estimé que sur une ou deux années. Le niveau robuste est le moins bon des trois candidats (`r num(smase[["robust_level"]], 2)`) et ne bat la naïve que sur `r pct(rw_better)` des factures. Il perd surtout juste après un changement de niveau, dont les premiers mois sont hors palier, donc neutralisés : la prévision reste sur l'ancien niveau (`r rw_worst$site` en `r mname(rw_worst$month)` : `r num(rw_worst$forecast)` kWh prévus pour `r num(rw_worst$billed)` facturés). Neutraliser un écart ponctuel suppose de savoir qu'il est ponctuel, ce que la dernière facture ne dit pas encore.
+La naïve par jour l'emporte dans `r sum(ord_sel$chosen == "naive_per_day")` des `r nrow(ord_sel)` groupes ordinaires. `r if (nrow(other) > 0) paste0("Seul le ", grp(other$class[1]), " (", sp$n[match(other$class[1], sp$class)], " sites) retient la ", lab(other$chosen[1]), ", avec un gain à peine supérieur à la marge de ", pct(config$selection_tolerance), ".") else ""` Le niveau robuste est la moins bonne des variantes : en écartant une facture inhabituelle, il manque aussi le début d'un vrai changement de niveau. Pour les gros sites, la règle retient `r lab(big_sel$chosen)`.
 
-Groupe par groupe, la règle retient la naïve par jour pour `r sum(ord_sel$chosen == "naive_per_day")` des `r nrow(ord_sel)` groupes ordinaires. `r if (nrow(other) > 0) paste0("Exception : ", paste0("le ", grp(other$class), " (", sp$n[match(other$class, sp$class)], " sites), où la ", sapply(other$chosen, lab), " fait ", num(other$chosen_mase, 3), " contre ", num(other$naive_mase, 3), " pour la naïve, soit ", pct(1 - other$chosen_mase / other$naive_mase, 1), " de moins, juste au-delà de la tolérance de ", pct(config$selection_tolerance), collapse = " ; "), ". Sur si peu de sites et 11 mois, un tel écart est fragile.") else ""` Pour les gros sites, elle retient `r lab(big_sel$chosen)` (`r num(big_sel$chosen_mase, 2)` contre `r num(big_sel$naive_mase, 2)` pour la naïve), sur deux sites seulement. Ces choix sont évalués une seule fois, sur les mois de test, dans la partie suivante.
-
-## Évaluation finale sur les mois de test
+## Résultats sur les mois de test
 
 ```{r}
 #| include: false
-tt <- fc$test
-tst <- tt[tt$method == "strategy", ]
 ta <- fc$test_accuracy
 tacc <- function(scope, method, col) ta[ta$scope == scope & ta$method == method, col]
-tg <- fc$test_targets
-cv <- fc$coverage
-cov_of <- function(cons, l) cv$inside[cv$construction == cons & cv$level == l]
-cons_lab <- c(empirical = "empiriques", gaussian = "gaussiens")
+cv_ <- fc$coverage
+cov_of <- function(cons, l) cv_$inside[cv_$construction == cons & cv_$level == l]
+tst <- fc$test[fc$test$method == "strategy", ]
+tst$unreliable <- tst$end_anomaly | tst$noisy  # the two criteria kept after the test
 rel <- function(k, yes) mean(tst$rel_error[tst[[k]] == yes])
-relm <- function(k, yes) stats::median(tst$rel_error[tst[[k]] == yes])
-cm <- fc$criterion_mase
-fm <- fc$flag_mase
-n_test <- nrow(tst)
 ```
 
-Les `r length(tg)` mois de test, de `r mname(min(tg))` à `r mname(max(tg))`, ont été lus une seule fois, avec la méthode retenue pour chaque groupe et des règles d'intervalle et de fiabilité écrites avant cette lecture. Ils sont plus difficiles que la validation : sur les sites ordinaires, la MASE passe de `r num(fc$val_mase[["ordinary"]], 2)` en validation à `r num(tacc("ordinary", "strategy", "mase"), 2)` sur le test. La stratégie retenue fait jeu égal avec la naïve par jour (`r num(tacc("ordinary", "naive_per_day", "mase"), 2)`), ce qui est attendu puisqu'elle est la naïve pour presque tous les sites ; l'erreur relative médiane est de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)`. Sur les deux gros sites, auto.arima perd l'avantage qu'il avait en validation (`r num(tacc("big", "strategy", "mase"), 2)` contre `r num(tacc("big", "naive_per_day", "mase"), 2)` pour la naïve) : choisi sur deux sites et onze mois, ce gain n'était pas solide.
+Les mois de test, lus une seule fois, se révèlent plus difficiles que la validation (MASE `r num(tacc("ordinary", "strategy", "mase"), 2)` contre `r num(fc$val_mase[["ordinary"]], 2)` sur les sites ordinaires). La méthode retenue y fait jeu égal avec la naïve, avec une erreur médiane de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)`. Pour les gros sites, auto.arima perd l'avantage qu'il avait en validation (`r num(tacc("big", "strategy", "mase"), 2)` contre `r num(tacc("big", "naive_per_day", "mase"), 2)` pour la naïve) : choisi sur deux sites seulement, ce gain n'était pas solide.
 
-```{r}
-#| label: tbl-coverage
-#| tbl-cap: "Couverture des intervalles sur les mois de test (part des factures à l'intérieur)."
-knitr::kable(data.frame(Construction = c("Quantiles empiriques de validation", "Intervalles gaussiens du cours"),
-                        `80 %` = pct(c(cov_of("empirical", 0.8), cov_of("gaussian", 0.8))),
-                        `95 %` = pct(c(cov_of("empirical", 0.95), cov_of("gaussian", 0.95))),
-                        check.names = FALSE), align = "lrr")
-```
+Chaque prévision est donnée avec un intervalle à 80 % et à 95 %, construit comme dans le cours à partir de la variabilité mensuelle de chaque site. Nous l'avons préférée à des intervalles tirés des erreurs de validation, trop étroits sur le test. Sur les mois de test, l'intervalle à 80 % contient `r pct(cov_of(fc$construction, 0.8))` des factures, un peu plus que prévu, et celui à 95 % en contient `r pct(cov_of(fc$construction, 0.95))`, un peu moins : les écarts forts sont plus fréquents que ne le prévoit la loi normale.
 
-Deux constructions d'intervalles ont été comparées (@tbl-coverage). Les quantiles empiriques reprennent la dispersion des erreurs de validation, séparément pour les sites signalés comme peu fiables et les autres. Ce partage n'est pas hors échantillon : deux des critères sont calculés sur l'ensemble de la validation. Les intervalles gaussiens sont ceux du cours : pour la naïve, la prévision plus ou moins un multiple de l'écart-type des variations mensuelles du site ; pour auto.arima, l'intervalle du modèle. Les quantiles empiriques sont trop étroits, car les erreurs du test dépassent celles de la validation. Les intervalles gaussiens, plus proches de la couverture visée, sont retenus. L'intervalle à 80 % contient un peu plus de factures que prévu (`r pct(cov_of("gaussian", 0.8))`), celui à 95 % un peu moins (`r pct(cov_of("gaussian", 0.95))`) : les écarts les plus forts sont plus fréquents que ne le prévoit la loi normale. Le test sert ici à la fois à choisir entre les deux constructions et à mesurer leur couverture : avec deux candidats seulement, l'optimisme qui en résulte est faible, mais la couverture réelle est plutôt à lire comme un plafond.
-
-Un site est signalé comme peu fiable, à chaque origine, s'il remplit l'un de trois critères fixés à l'avance : une erreur de validation supérieure à sa variation habituelle (MASE au-dessus de `r num(fc$config$reliability_mase_max)`), une anomalie en fin de série (dernière facture hors palier, ou rupture dans les `r fc$config$edge_months` derniers mois), ou un bruit dans le quart le plus élevé des sites ordinaires. Mesuré en MASE, comme prévu, l'indicateur ne sépare pas les sites (`r num(fm$scaled_error[fm$flagged], 2)` pour les signalés contre `r num(fm$scaled_error[!fm$flagged], 2)`) : la MASE divise l'erreur par la variation habituelle du site, ce qui efface justement l'effet du bruit. En erreur relative, qui compte pour un gestionnaire, les sites signalés se trompent davantage (`r pct(rel("flagged", TRUE), 1)` en moyenne contre `r pct(rel("flagged", FALSE), 1)`). Deux critères portent ce résultat : l'anomalie en fin de série (`r cm$n[cm$criterion == "end_anomaly"]` factures, erreur relative médiane `r pct(relm("end_anomaly", TRUE), 1)` contre `r pct(relm("end_anomaly", FALSE), 1)`, MASE `r num(cm$mase_yes[cm$criterion == "end_anomaly"], 1)` contre `r num(cm$mase_no[cm$criterion == "end_anomaly"], 1)`) et le bruit (`r pct(relm("noisy", TRUE), 1)` contre `r pct(relm("noisy", FALSE), 1)`). Le critère d'erreur de validation n'apporte rien (`r pct(relm("poor_fit", TRUE), 1)` contre `r pct(relm("poor_fit", FALSE), 1)`) : la liste des sites peu fiables ci-dessous ne retient que les deux autres. Ce choix est fait après lecture du test ; le fichier des prévisions garde aussi la règle à trois critères fixée à l'avance.
+Nous jugeons un site peu fiable quand sa fin de série est ambiguë (dernière facture hors palier ou rupture récente) ou quand il est très bruité. Sur le test, ces sites se trompent nettement plus (`r pct(rel("unreliable", TRUE), 1)` d'erreur moyenne contre `r pct(rel("unreliable", FALSE), 1)`, et `r pct(rel("end_anomaly", TRUE), 1)` pour une fin de série ambiguë). Un troisième critère prévu, l'erreur passée du site, n'apportait rien : nous l'avons retiré après lecture du test.
 
 ## Prévision de décembre 2021
 
@@ -245,15 +131,33 @@ amb <- dc[!is.na(dc$scenario_lasting), ]
 ord_dc <- dc[dc$class != "big", ]
 ```
 
-La prévision finale est refaite sur les `r pan$n_months` mois, avec la méthode de chaque groupe et l'intervalle gaussien. Elle totalise `r num(sum(dc$forecast))` kWh pour décembre 2021, dont `r num(sum(dc$forecast[dc$class == "big"]))` kWh pour les deux gros sites. `r sum(ord_dc$unreliable)` sites ordinaires sur `r nrow(ord_dc)` sont peu fiables : `r sum(grepl("noisy", ord_dc$reasons))` pour leur bruit, `r sum(grepl("end_anomaly", ord_dc$reasons))` pour une fin de série ambiguë. La prévision de chaque site, avec ses intervalles, est donnée en annexe (@tbl-december).
+Nous refaisons la prévision finale sur les `r pan$n_months` mois. Elle totalise **`r num(sum(dc$forecast))` kWh** pour décembre 2021, dont `r num(sum(dc$forecast[dc$class == "big"]))` kWh pour les deux gros sites. `r sum(ord_dc$unreliable)` sites ordinaires sont peu fiables, surtout par leur variabilité. Le @tbl-december donne la prévision de chaque site avec son intervalle à 95 %.
 
-Pour ces derniers, on ne sait pas encore si la dernière facture est un écart ponctuel ou le début d'un nouveau niveau. Deux scénarios sont chiffrés (@tbl-scenarios) : écart ponctuel, la consommation revient au niveau d'avant (le palier qui précède une rupture récente, ou le palier actuel si seule la dernière facture s'en écarte) ; changement durable, elle reste au niveau de la dernière facture (naïve par jour).
+```{r}
+#| label: tbl-december
+#| tbl-cap: "Prévision de décembre 2021 par site (kWh) et intervalle à 95 %. * : site peu fiable."
+half <- ceiling(nrow(dc) / 2)
+cell <- function(d) data.frame(Site = paste0(d$site, ifelse(d$unreliable, "*", "")), `Prévision` = num(d$forecast),
+                               `95 %` = paste0(num(d$lo95), "\u00a0à\u00a0", num(d$hi95)), check.names = FALSE)
+left <- cell(dc[seq_len(half), ])
+right <- cell(dc[(half + 1):nrow(dc), ])
+right <- rbind(right, right[rep(NA, half - nrow(right)), ])
+right[is.na(right)] <- ""
+gap <- data.frame(` ` = rep("", half), check.names = FALSE)
+knitr::kable(cbind(left, gap, right), align = "lrrclrr", row.names = FALSE)
+```
+
+Pour `r nrow(amb)` sites, la dernière facture est ambiguë : nous ne savons pas encore si c'est un écart passager ou le début d'un nouveau niveau. Nous chiffrons donc deux scénarios (@tbl-scenarios). La prévision retenue est celle du changement durable, puisque la méthode reprend le dernier niveau.
 
 ```{r}
 #| label: tbl-scenarios
 #| tbl-cap: "Sites dont la fin de série est ambiguë : deux scénarios pour décembre 2021 (kWh)."
-knitr::kable(data.frame(Site = amb$site, `Écart ponctuel` = num(amb$scenario_temporary),
+knitr::kable(data.frame(Site = amb$site, `Écart passager` = num(amb$scenario_temporary),
                         `Changement durable` = num(amb$scenario_lasting),
                         `Prévision retenue` = num(amb$forecast), check.names = FALSE),
              align = "lrrr")
 ```
+
+## Réponse : comment prévoir la consommation du mois suivant ?
+
+Pour ces sites, la meilleure méthode est la plus simple : reprendre la consommation par jour du dernier mois et la multiplier par le nombre de jours du mois à prévoir. Les modèles du cours ne font pas mieux, et l'analyse explique pourquoi : le niveau des sites dérive comme une marche aléatoire, ponctuée de ruptures, et la naïve est la meilleure prévision d'une marche aléatoire. Cette méthode se trompe de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)` en médiane sur des mois jamais vus. Elle doit être accompagnée de deux précautions : un intervalle pour chaque site, et une attention particulière aux sites peu fiables, dont la dernière facture peut annoncer un changement de niveau.

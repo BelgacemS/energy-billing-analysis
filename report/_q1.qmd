@@ -1,41 +1,7 @@
 # Q1 : factures à vérifier
 
-## Contrôles de cohérence
-
-```{r}
-gaps <- res$coverage[res$coverage$type == "gap", ]
-overlaps <- res$coverage[res$coverage$type == "overlap", ]
-```
-
-`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire. Périodes sans facturation : `r if (nrow(gaps) == 0) "aucune" else paste0(nrow(gaps), " (", paste(paste(gaps$site, ":", gaps$days, ifelse(gaps$days > 1, "jours", "jour")), collapse = " ; "), ")")`. Périodes facturées deux fois : `r if (nrow(overlaps) == 0) "aucune" else nrow(overlaps)`. Factures de montant nul ou négatif : `r res$n_values`. Sites ayant deux factures pour le même mois : `r res$n_duplicates`.
-
-```{r}
-p <- res$periods
-knitr::kable(
-  data.frame(Site = p$site, Mois = fr_month(p$month),
-             `Début` = fr_date(p$begin), Fin = fr_date(p$end),
-             `Jours facturés` = p$billed_days, `Jours du mois` = p$month_days,
-             kWh = num(p$kwh), check.names = FALSE),
-  align = "llllrrr")
-```
-
-`r res$repeats$observed` factures reprennent exactement le montant du mois précédent, sur `r res$repeats$n_sites` sites. Par hasard, on en attend environ `r num(res$repeats$expected, 1)` (nombre moyen d'écarts d'un mois à l'autre égaux à une petite valeur donnée). La probabilité d'en observer au moins autant par hasard est de `r num(res$repeats$p_value, 2)` : `r if (res$repeats$p_value < 0.05) "ces répétitions sont plus fréquentes que le hasard et méritent une vérification" else "ces répétitions ne suffisent pas à conclure à une facturation estimée"`.
-
-## Écarts au niveau local du site (filtre de Hampel)
-
-Chaque facture, ramenée au jour, est comparée à la médiane des `r res$hampel_half_width` mois qui la précèdent et des `r res$hampel_half_width` qui la suivent. Elle est signalée si l'écart dépasse `r res$hampel_threshold` fois la dispersion de cette fenêtre, sans descendre sous le bruit habituel du site. `r nrow(res$hampel_flags)` factures sont signalées, sur `r res$n_hampel_sites` sites. Pour les `r res$hampel_half_width` premiers et les `r res$hampel_half_width` derniers mois, la fenêtre est tronquée : `r res$n_hampel_edge` des alertes tombent dans ces mois, où la méthode est moins fiable. Ce filtre simple sert de référence : la méthode retenue, présentée ci-dessous, lui est comparée sur des anomalies simulées.
-
-
-
-
-
-## Valeur attendue de chaque facture
-
 ```{r}
 #| include: false
-eff_c <- pan$effect[pan$effect$group == "common", ]
-eff_lo <- eff_c[which.min(eff_c$effect), ]
-eff_hi <- eff_c[which.max(eff_c$effect), ]
 month_name <- c("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
                 "septembre", "octobre", "novembre", "décembre")
 mname <- function(d) paste(month_name[as.integer(format(d, "%m"))], format(d, "%Y"))
@@ -44,136 +10,6 @@ de <- function(d) {
   m <- mname(d)
   if (substr(m, 1, 1) %in% c("a", "o")) paste0("d'", m) else paste("de", m)
 }
-K <- pan$config$segment_K
-K0 <- pan$synthetic_K
-syn <- pan$synthetic
-rate <- function(cost, scenario, size, col) {
-  pct(syn[syn$cost == cost & syn$scenario == scenario & syn$size == size &
-          syn$noise == "gaussian", col])
-}
-spk <- max(pan$config$synthetic_spike_sizes)
-stp <- max(pan$config$synthetic_step_sizes)
-rows <- data.frame(
-  Situation = c("Niveau constant, fausse rupture",
-                sprintf("Pic isolé de %d fois le bruit, fausse rupture", spk),
-                sprintf("Paire compensée de %d fois le bruit, fausse rupture", spk),
-                sprintf("Paire compensée de %d fois le bruit, 3 mois signalés", spk),
-                sprintf("Rupture de %d fois le bruit, seule et au bon mois", stp)),
-  sc = c("constant", "spike", "pair", "pair", "step"),
-  sz = c(0, spk, spk, spk, stp),
-  col = c("any_break", "any_break", "any_break", "anomaly_flagged", "break_at_step")
-)
-for (cost in c("biweight", "normal", "np")) {
-  rows[[cost]] <- mapply(function(s, z, c) rate(cost, s, z, c), rows$sc, rows$sz, rows$col)
-}
-syn_tab <- setNames(rows[c("Situation", "biweight", "normal", "np")],
-                    c("Situation", "Robuste", "Gaussien", "Non paramétrique"))
-b1240 <- pan$breaks[pan$breaks$site == "1240BR", ]
-b1240 <- b1240[which.max(abs(b1240$change)), ]
-n_small_breaks <- sum(abs(pan$breaks$change[!pan$breaks$big]) <= config$level_shift_min)
-top_br <- pan$break_months[pan$break_months >= pan$break_months[2]]  # ties kept
-agree <- pan$agreement
-```
-
-Le filtre de Hampel compare chaque facture à ses voisines. Il confond donc les bords d'un changement de niveau avec des écarts, alors que la plupart des sites changent de palier au moins une fois. La valeur attendue d'une facture est construite autrement, comme une décomposition de la série au sens du cours, sur le logarithme des kWh par jour : un niveau propre au site, constant par paliers, auquel s'ajoute l'effet du mois.
-
-L'effet du mois est commun aux `r pan$n_small` sites ordinaires, pour les raisons données dans la partie descriptive, et propre à chacun des deux gros sites. Il est mesuré comme dans la décomposition additive du cours : écart de chaque facture à la tendance (moyenne mobile centrée sur 12 mois), puis médiane de ces écarts sur les sites et les années. Il va de `r pct(exp(eff_lo$effect) - 1, 1, signed = TRUE)` en `r month_name[eff_lo$moy]` à `r pct(exp(eff_hi$effect) - 1, 1, signed = TRUE)` en `r month_name[eff_hi$moy]`.
-
-Les paliers sont trouvés par segmentation : la série corrigée de l'effet du mois est découpée en périodes de niveau constant d'au moins `r pan$config$plateau_min_months` mois, et un nouveau palier n'est créé que si l'amélioration de l'ajustement dépasse une pénalité fixe. Les écarts sont mesurés en unités du bruit habituel du site, sa variation typique d'un mois sur l'autre, qui va de `r pct(pan$sigma_range[1], 1)` à `r pct(pan$sigma_range[2], 1)` selon les sites (médiane `r pct(pan$sigma_median, 1)`). Une facture erronée ne doit ni créer un palier ni en déplacer un. La segmentation utilisée est donc robuste aux valeurs aberrantes (Fearnhead et Rigaill, 2019) : l'écart d'une facture à son palier compte normalement jusqu'à un seuil de K fois le bruit, et ne compte pas davantage au-delà. Une facture très haute ou une sous-facturation suivie de son rattrapage pèse ainsi au plus autant qu'un écart de K fois le bruit. Le découpage optimal est calculé exactement, et une facture à plus de K fois le bruit de son palier est dite hors palier. Le seuil retenu, K = `r K`, et la pénalité viennent de la calibration de la section suivante.
-
-Cette méthode a été comparée à la segmentation classique, qui suppose un bruit gaussien, et à une variante non paramétrique (Haynes et al., 2017), sur `r pan$config$synthetic_reps` séries simulées de `r pan$n_months` mois par situation, avec le seuil de départ K = `r K0` (@tbl-synthetic). La paire compensée, deux mois sous-facturés puis un rattrapage du double, les départage : la segmentation gaussienne en fait presque toujours un faux palier, la variante non paramétrique trouve une fausse rupture dans plus d'un quart des séries quelle que soit la situation, et la version robuste reste au niveau de fausses alertes d'une série constante. Les trois trouvent aussi bien une rupture nette. La version robuste est retenue.
-
-```{r}
-#| label: tbl-synthetic
-#| tbl-cap: "Comportement des trois segmentations sur séries simulées (bruit gaussien, part des simulations)."
-#| tbl-colwidths: [46, 13, 13, 28]
-knitr::kable(syn_tab, align = "lrrr")
-```
-
-```{r}
-#| label: fig-panel-examples
-#| fig-cap: "Factures, paliers et valeur attendue de quatre sites."
-#| fig-height: 5
-fig("panel_examples")
-```
-
-La @fig-panel-examples montre la méthode sur quatre sites. 1240BR passe sur un nouveau palier en `r mname(b1240$month)` (`r pct(b1240$change, signed = TRUE)`) : c'est une rupture durable, pas un écart ponctuel. Chez 0089KO, une facture très basse puis une facture très haute précèdent un palier plus élevé. 1911BB et 1088KO montent en deux mois vers un palier plus haut : les mois de la montée restent hors palier au lieu de former un palier fictif.
-
-```{r}
-#| label: fig-break-months
-#| fig-cap: "Mois des ruptures durables des sites ordinaires."
-fig("break_months")
-```
-
-La segmentation recoupe la mesure plus grossière de la partie descriptive : `r agree["TRUE", "TRUE"]` des `r sum(agree["TRUE", ])` sites qui y avaient un changement de niveau de plus de `r pct(config$level_shift_min)` ont ici une rupture de cette taille. Les ruptures se regroupent sur quelques mois (`r paste(paste0(month_fr(as.Date(paste0(names(top_br), "-01"))), " : ", as.integer(top_br), " sites"), collapse = " ; ")`, @fig-break-months). La segmentation crée aussi beaucoup de petits paliers (`r n_small_breaks` des `r pan$n_breaks_small` ruptures des sites ordinaires sont de `r pct(config$level_shift_min)` ou moins), qui suivent des dérives lentes. Ils sont ignorés par la typologie : seul un changement de plus de `r pct(config$level_shift_min)` compte comme rupture.
-
-## Calibration par injection d'anomalies
-
-```{r}
-#| include: false
-g <- cal$grid
-ch <- cal$chosen
-pen_txt <- function(beta) if (beta == 3) "pénalité par défaut" else sprintf("pénalité %g fois la pénalité par défaut", beta / 3)
-det <- function(type, size) mean(cal$detection$rate[cal$detection$type == type & cal$detection$size == size])
-type_ok <- function(type) {
-  d <- cal$detection[cal$detection$type == type, ]
-  sum(d$type_rate * d$rate) / sum(d$rate)  # share of the detections with the right type
-}
-hd <- function(type, size) {
-  h <- cal$hampel
-  mean(h$rate[h$threshold == cal$hampel_compared[["default"]] & h$type == type & h$size == size])
-}
-h_fa <- cal$hampel_fa$rate[cal$hampel_fa$threshold == cal$hampel_compared[["default"]]]
-ref <- g[g$K == 3 & g$beta == 3, ]
-adm <- g[g$admissible, ]  # settings under the false alert cap
-n_bills_sim <- cal$n_sites * pan$n_months
-cfgc <- cal$config
-```
-
-Sans vérité terrain, on ne peut pas mesurer directement combien de factures erronées la méthode trouve. On la teste donc sur des panels simulés qui ressemblent aux données, dans lesquels on place des anomalies connues. Pour chacun des `r cal$n_sites` sites ordinaires, le panel simulé reprend son niveau (constant entre ses ruptures de plus de `r pct(config$level_shift_min)`), l'effet du mois et ses propres fluctuations autour de ce niveau, tirées au hasard par blocs de `r cfgc$calibration_block` mois consécutifs. Les blocs gardent les dérives lentes des sites : d'un mois au suivant, ces fluctuations sont corrélées à `r num(cal$resid_acf[1], 2)`. Les petites ruptures de `r pct(config$level_shift_min)` ou moins sont traitées comme du bruit, puisque ce sont elles qu'il s'agit de juger. Dans chaque panel, on place une anomalie par site, à un mois tiré au hasard hors des `r config$edge_months` premiers et derniers mois : un écart ponctuel, un écart temporaire de `r cfgc$calibration_episode_months` mois, une paire compensée ou une rupture de niveau, avec des amplitudes de `r pct(min(cfgc$calibration_spike_sizes))` à `r pct(max(cfgc$calibration_spike_sizes))`. Chaque combinaison est répétée sur `r cfgc$calibration_reps` panels, avec des graines fixées.
-
-Une **fausse alerte** est une ligne suspecte dans un panel sans anomalie injectée, hors des vraies ruptures du site. Une anomalie est **détectée** quand l'un de ses mois est signalé, une rupture quand la méthode trouve une rupture de plus de `r pct(config$level_shift_min)` dans le bon sens, à `r cfgc$calibration_break_window` mois près. La règle de choix a été écrite avant le premier lancement : parmi les réglages qui font au plus `r pct(cfgc$calibration_fa_max)` de fausses alertes, retenir celui qui détecte le mieux, en moyenne, les écarts ponctuels et les ruptures. Le seuil K a été essayé de `r num(min(cfgc$calibration_K), 1)` à `r max(cfgc$calibration_K)` fois le bruit, et la pénalité de 1 à `r max(cfgc$calibration_beta) / 3` fois la valeur par défaut.
-
-```{r}
-#| label: tbl-calibration
-#| tbl-cap: "Réglages essayés, pénalité par défaut : fausses alertes et détection sur panels simulés, alertes sur les données réelles (sites ordinaires ; factures hors palier, ruptures non comprises)."
-#| tbl-colwidths: [10, 16, 18, 18, 19, 19]
-gb <- g[g$beta == ch$beta, ]
-knitr::kable(data.frame(K = num(gb$K, 1), `Fausses alertes` = pct(gb$fa, 1),
-                        `Écarts ponctuels détectés` = pct(gb$spike),
-                        `Ruptures détectées` = pct(gb$level_break),
-                        `Factures hors palier réelles` = gb$suspect_bills,
-                        `Changements durables réels` = gb$lasting_changes, check.names = FALSE),
-             align = "rrrrrr")
-```
-
-`r if (nrow(adm) == 1) paste0("Un seul réglage reste sous ", pct(cfgc$calibration_fa_max), " de fausses alertes.") else paste0("Seuls ", nrow(adm), " réglages restent sous ", pct(cfgc$calibration_fa_max), " de fausses alertes, tous avec K = ", paste(unique(adm$K), collapse = " ou "), " ; leurs détections sont à moins de ", num(100 * cfgc$calibration_tie, 1), " point l'une de l'autre, et la règle garde alors celui qui fait le moins de fausses alertes.")` Elle retient K = `r ch$K` avec la `r pen_txt(ch$beta)` (`r pct(ch$fa, 1)` de fausses alertes, soit environ `r num(ch$fa * n_bills_sim)` alertes injustifiées sur `r num(n_bills_sim)` factures). Le seuil de départ, K = 3, en faisait `r pct(ref$fa, 1)` : le bruit mesuré d'un mois sur l'autre sous-estime les dérives lentes des sites, que la segmentation prenait pour des écarts. Une pénalité plus forte augmente les fausses alertes à K égal, car avec moins de paliers ces dérives sortent davantage du palier. Sur les données réelles, le nouveau réglage ramène les factures hors palier signalées (ruptures non comprises) de `r ref$suspect_bills` à `r ch$suspect_bills` (@tbl-calibration) ; le nombre de changements durables bouge peu (`r ref$lasting_changes` à `r ch$lasting_changes`).
-
-```{r}
-#| label: fig-calibration
-#| fig-cap: "Part des anomalies injectées qui sont signalées, selon leur amplitude (panels simulés)."
-#| fig-height: 5.5
-fig("calibration_detection")
-```
-
-Le prix de ce réglage prudent est la sensibilité aux petits écarts (@fig-calibration). Un écart ponctuel de `r pct(0.2)` est signalé `r pct(det("spike", 0.2))` du temps, un de `r pct(0.1)` `r pct(det("spike", 0.1))` du temps, un de `r pct(0.05)` seulement `r pct(det("spike", 0.05))` du temps. Une rupture de `r pct(0.2)` est trouvée `r pct(det("level_break", 0.2))` du temps ; à `r pct(0.1)`, la taille même du seuil, `r pct(det("level_break", 0.1))`. Un écart ponctuel détecté est classé comme tel dans `r pct(type_ok("spike"))` des cas. Les écarts temporaires et les paires compensées sur `r cfgc$calibration_episode_months` mois sont bien signalés (paires de `r pct(0.1)` : `r pct(det("pair", 0.1))`), mais presque jamais avec leur type (`r pct(type_ok("pair"))` des paires détectées, `r pct(type_ok("temporary"))` des écarts temporaires) : un épisode de `r cfgc$calibration_episode_months` mois a la durée minimale d'un palier, et la méthode y voit le plus souvent deux changements durables rapprochés. Sur les données, une telle paire de changements de sens opposés est donc à lire comme un possible écart temporaire.
-
-Le filtre de Hampel fait, à son seuil habituel, un taux de fausses alertes du même ordre (`r pct(h_fa, 1)`). Il signale moins souvent les écarts ponctuels (`r pct(hd("spike", 0.2))` à `r pct(0.2)`, `r pct(hd("spike", 0.1))` à `r pct(0.1)`) et beaucoup moins les écarts temporaires (`r pct(hd("temporary", 0.2))` à `r pct(0.2)` contre `r pct(det("temporary", 0.2))`). Surtout, il ne dit rien des ruptures, qui expliquent l'essentiel des kWh en écart. Le panel est retenu.
-
-## Typologie des factures suspectes
-
-```{r}
-#| include: false
-sf <- sus$flagged
-ord <- sf[!sf$big, ]
-bt <- sus$by_type_conf
-n_type <- sus$by_type
-ks <- function(x) ifelse(x < 0, paste0("−", num(-x)), paste0("+", num(x)))
-tlab <- sus$type_labels
-short <- c(irregular_period = "Irrégulière", point = "Ponctuel", implausible = "Implausible",
-           temporary = "Temporaire", compensated_pair = "Paire", lasting_change = "Durable",
-           indeterminate = "Indéterminé", transition = "Transition", network_change = "Réseau")
-clab <- function(x) unname(sus$conf_labels[as.character(x)])
 mlist <- function(d) {
   d <- sort(d)
   y <- format(d, "%Y")
@@ -182,52 +18,28 @@ mlist <- function(d) {
   if (length(m) > 1) m <- paste0(paste(m[-length(m)], collapse = ", "), " et ", m[length(m)])
   paste(m, y[1])
 }
+ks <- function(x) ifelse(x < 0, paste0("−", num(-x)), paste0("+", num(x)))
+sf <- sus$flagged
+ord <- sf[!sf$big, ]
+tlab <- sus$type_labels
+short <- c(irregular_period = "Irrégulière", point = "Ponctuel", implausible = "Implausible",
+           temporary = "Temporaire", compensated_pair = "Paire", lasting_change = "Durable",
+           indeterminate = "Indéterminé", transition = "Transition", network_change = "Réseau")
+clab <- function(x) unname(sus$conf_labels[as.character(x)])
 cfg <- sus$config
-hi <- ord[ord$suspect & ord$confidence == "high", ]
-n_top <- 25
-top <- head(hi, n_top)
-pr <- sus$pairs
-sm <- sus$shared_months
-kept <- sm[sm$shared, ]
-kept <- kept[order(kept$month), ]
-lam <- function(dir) sus$shared_lambda$lambda[sus$shared_lambda$direction == dir]
-kept_txt <- paste0(mname(as.Date(kept$month)), " (", ifelse(kept$direction == "up", "hausses", "baisses"),
-                   ", ", kept$n, " sites)")
 st <- sus$facts$suspect_types_by_count
-st_lab <- unname(tlab[names(st)])
-```
-
-Pour chaque facture, la méthode compare le montant facturé à la valeur attendue (le palier du site, corrigé de l'effet du mois). Le type d'une facture hors palier dépend ensuite de la forme de l'écart dans le temps, ce qui rejoint les trois situations classiques de la détection de valeurs atypiques dans une série temporelle (Chen et Liu, 1993) : l'écart isolé sur un mois, l'écart qui s'estompe au bout de quelques mois et le changement qui s'installe.
-
-- **Période irrégulière** : la facture ne couvre pas exactement son mois (contrôle de cohérence plus haut).
-- **Écart ponctuel** : un seul mois hors palier, puis retour au même palier.
-- **Valeur implausible** : écart ponctuel dont le montant est plus de `r cfg$implausible_ratio` fois supérieur, ou inférieur dans le même rapport, à l'attendu.
-- **Paire compensée** : des factures de mois voisins, l'une trop basse et l'autre trop haute, dans un ordre ou dans l'autre, dont le total reste à `r pct(cfg$pair_tolerance)` près de la consommation attendue. On affiche l'écart net sur l'ensemble de ces mois.
-- **Écart temporaire** : de deux à `r cfg$temporary_max_months` mois de suite dans le même sens, puis retour au même palier.
-- **Changement durable** : le site passe sur un nouveau palier qui s'écarte de plus de `r pct(cfg$level_shift_min)` de l'ancien. On chiffre le cumul en kWh par rapport à l'ancien palier, depuis le début du changement jusqu'à la fin de la série, sans compter deux fois un même mois quand le site change encore ensuite.
-- **Indéterminé** : écart dont la suite n'est pas observable, parce qu'il touche la fin de la série, ou qui ne rentre dans aucune règle.
-
-Deux catégories sont affichées mais ne comptent pas comme suspectes. La **transition** est une montée ou une descente progressive vers un nouveau palier. Le **probable changement réseau** est un changement de niveau qui touche, le même mois et dans le même sens, plus de sites que le hasard n'en produit : en moyenne, `r num(lam("up"), 1)` site par mois passe à un palier plus haut de plus de `r pct(cfg$level_shift_min)` et `r num(lam("down"), 1)` à un palier plus bas, et un mois n'est retenu que si la probabilité d'en voir au moins autant par hasard est inférieure à `r pct(cfg$shared_break_alpha)`. Ces mois sont `r paste(kept_txt, collapse = ", ")`.
-
-Chaque facture reçoit un écart en kWh (facturé moins attendu), un sens et une fourchette de plus ou moins `r cfg$range_sigmas` fois la variation habituelle du site. La confiance est **faible** dans les `r cfg$edge_months` premiers et derniers mois, où la méthode a moins de recul, **moyenne** pour une rupture partagée entre sites ou un écart de moins de `r cfg$high_confidence_z` fois le bruit, **élevée** sinon. Avec le seuil retenu, toute facture hors palier dépasse déjà `r cfg$segment_K` fois le bruit : la confiance moyenne ne concerne plus que des ruptures.
-
-```{r}
-#| label: fig-suspects-by-type
-#| fig-cap: "Lignes signalées par type et niveau de confiance (sites ordinaires)."
-#| fig-height: 5
-fig("suspects_by_type")
-```
-
-Sur les sites ordinaires, `r sus$n_suspect` lignes sont suspectes, soit `r sus$facts$n_bills_suspect` factures distinctes sur `r sus$n_suspect_sites` sites (@fig-suspects-by-type). Le type le plus fréquent est le `r tolower(st_lab[1])` (`r st[[1]]` lignes), suivi de l'`r tolower(st_lab[2])` (`r st[[2]]`) et de l'`r tolower(st_lab[3])` (`r st[[3]]`). Hors changements durables, les écarts des factures suspectes totalisent `r ks(sus$gap_by_direction[["over"]])` kWh au-dessus de l'attendu et `r ks(sus$gap_by_direction[["under"]])` kWh en dessous. Les changements durables cumulent `r ks(sus$cumul_by_direction[["over"]])` kWh à la hausse et `r ks(sus$cumul_by_direction[["under"]])` kWh à la baisse depuis leur début. Un écart qui s'installe est plutôt un changement d'équipement ou de contrat, à confirmer auprès du site, qu'une facture erronée : ces cumuls ne sont pas des montants à réclamer.
-
-### Liste priorisée
-
-Les lignes suspectes sont classées par confiance puis par écart absolu en kWh. Le @tbl-suspects-high reprend les `r min(n_top, nrow(hi))` plus gros écarts parmi les `r nrow(hi)` lignes de confiance élevée ; la liste complète figure en annexe (@tbl-suspects-all). Pour un changement durable, l'écart est celui du premier mois du nouveau palier. Types abrégés : `r paste0(short[c("point", "temporary", "compensated_pair", "lasting_change")], " pour ", tolower(tlab[c("point", "temporary", "compensated_pair", "lasting_change")]), collapse = ", ")`.
-
-```{r}
-#| label: tbl-suspects-high
-#| tbl-cap: "Lignes suspectes de confiance élevée, plus gros écarts (sites ordinaires, kWh)."
-#| tbl-colwidths: [10, 11, 18, 12, 12, 9, 6, 22]
+hi <- ord[ord$suspect & ord$confidence == "high", ]
+n_top <- 15
+top <- head(hi, n_top)
+det <- function(type, size) mean(cal$detection$rate[cal$detection$type == type & cal$detection$size == size])
+hd <- function(type, size) {
+  h <- cal$hampel
+  mean(h$rate[h$threshold == cal$hampel_compared[["default"]] & h$type == type & h$size == size])
+}
+h_fa <- cal$hampel_fa$rate[cal$hampel_fa$threshold == cal$hampel_compared[["default"]]]
+ref <- cal$grid[cal$grid$K == 3 & cal$grid$beta == 3, ]
+ch <- cal$chosen
+eff_c <- pan$effect$effect[pan$effect$group == "common"]
 sens <- function(d) ifelse(d == "over", "sur", "sous")
 tab_sus <- function(d) {
   data.frame(Site = d$site, Mois = fr_month(d$month), Type = unname(short[d$type]),
@@ -236,12 +48,71 @@ tab_sus <- function(d) {
              Fourchette = paste0(ks(d$gap_low), " à ", ks(d$gap_high)),
              check.names = FALSE)
 }
+```
+
+## Contrôles de cohérence
+
+`r nrow(res$periods)` factures ne couvrent pas exactement leur mois calendaire (@tbl-periods) : elles sont à vérifier d'office. Aucun site n'a de montant nul ou négatif, ni deux factures pour le même mois. `r res$repeats$observed` factures reprennent exactement le montant du mois précédent, mais c'est à peu près ce que le hasard produit (environ `r num(res$repeats$expected, 0)` attendues) : rien n'indique une facturation estimée.
+
+```{r}
+#| label: tbl-periods
+#| tbl-cap: "Factures dont la période ne couvre pas exactement le mois."
+p <- res$periods
+knitr::kable(
+  data.frame(Site = p$site, Mois = fr_month(p$month), `Début` = fr_date(p$begin), Fin = fr_date(p$end),
+             `Jours facturés` = p$billed_days, kWh = num(p$kwh), check.names = FALSE),
+  align = "llllrr")
+```
+
+## Valeur attendue de chaque facture
+
+Pour juger une facture, il faut savoir combien le site aurait dû consommer. Comparer chaque facture à ses voisines, comme le fait le filtre de Hampel (comparaison à la médiane des `r res$hampel_half_width` mois avant et après), ne suffit pas : les bords d'un changement de niveau passent alors pour des anomalies, alors que la plupart des sites changent de niveau. Nous construisons donc la valeur attendue comme une décomposition au sens du cours : un niveau propre au site, constant par paliers, plus un effet du mois commun aux sites ordinaires (de `r pct(exp(min(eff_c)) - 1, 1, signed = TRUE)` à `r pct(exp(max(eff_c)) - 1, 1, signed = TRUE)` selon le mois).
+
+Nous trouvons les paliers, d'au moins `r pan$config$plateau_min_months` mois, par segmentation de la série. Une facture erronée ne doit ni créer un palier ni en déplacer un, d'où le choix d'une segmentation robuste aux valeurs aberrantes (Fearnhead et Rigaill, 2019) : dans le calcul, l'écart d'une facture à son palier compte jusqu'à un seuil de K fois le bruit habituel du site, et pas davantage au-delà. Sur des séries simulées, nous avons vu que la segmentation classique, qui suppose un bruit gaussien, transformait presque toujours une sous-facturation suivie de son rattrapage en faux palier. La version robuste ne le fait pas. Une facture à plus de K fois le bruit de son palier est dite hors palier. La @fig-panel-examples montre le résultat sur quatre sites : les paliers suivent les changements durables (1240BR), et les factures anormales restent à l'écart (0089KO).
+
+```{r}
+#| label: fig-panel-examples
+#| fig-cap: "Factures, paliers et valeur attendue de quatre sites."
+#| fig-height: 5
+fig("panel_examples")
+```
+
+## Validation par simulation
+
+Sans vérité terrain, nous ne pouvons pas compter directement les erreurs trouvées. Nous avons donc testé la méthode sur des données simulées qui ressemblent aux factures réelles (niveau, effet du mois et fluctuations propres à chaque site), dans lesquelles nous plaçons des anomalies connues : écarts d'une facture, écarts temporaires, paires compensées et changements de niveau, de 1 % à 100 %. Chaque cas est répété `r cal$config$calibration_reps` fois. Nous avons choisi le seuil K et la pénalité de la segmentation par une règle écrite avant le premier essai : au plus `r pct(cal$config$calibration_fa_max)` de fausses alertes, puis la meilleure détection. La règle retient K = `r ch$K`. Avec le seuil de départ (K = 3), la méthode faisait `r pct(ref$fa, 0)` de fausses alertes, car elle prenait les dérives lentes des sites pour des anomalies.
+
+```{r}
+#| label: fig-calibration
+#| fig-cap: "Part des anomalies simulées qui sont signalées, selon leur amplitude."
+#| fig-height: 5.5
+fig("calibration_detection")
+```
+
+Avec ce réglage, la méthode fait environ `r pct(ch$fa, 0)` de fausses alertes (@fig-calibration). Elle signale `r pct(det("spike", 0.2))` des écarts d'une facture de 20 %, `r pct(det("spike", 0.1))` de ceux de 10 % et seulement `r pct(det("spike", 0.05))` de ceux de 5 %. Elle trouve `r pct(det("level_break", 0.2))` des changements de niveau de 20 %. Les écarts temporaires et les paires compensées de trois mois sont bien signalés, mais le plus souvent lus comme deux changements de niveau rapprochés, car trois mois suffisent à former un palier. Le filtre de Hampel, à un taux de fausses alertes comparable (`r pct(h_fa, 0)`), détecte moins (`r pct(hd("spike", 0.2))` des écarts de 20 %) et ne dit rien des changements de niveau.
+
+## Factures à vérifier
+
+Chaque facture hors palier reçoit un type, selon la forme de l'écart dans le temps. Nous retrouvons les situations classiques des valeurs atypiques en séries temporelles (Chen et Liu, 1993) :
+
+- **écart ponctuel** : un seul mois hors palier, puis retour au palier ;
+- **écart temporaire** : deux à `r cfg$temporary_max_months` mois de suite dans le même sens, puis retour ;
+- **paire compensée** : une facture trop basse et une trop haute, proches, dont le total est cohérent (sous-facturation puis rattrapage, ou l'inverse) ;
+- **changement durable** : le site passe sur un palier qui diffère de plus de `r pct(cfg$level_shift_min)` du précédent ;
+- **indéterminé** : écart en fin de série, dont on ne voit pas encore la suite ;
+- **période irrégulière** : la facture ne couvre pas exactement son mois.
+
+Deux cas sont affichés sans être suspects : la transition (montée progressive vers un nouveau palier) et le probable changement réseau (changement de niveau qui touche, le même mois, plus de sites que le hasard n'en produit). Chaque ligne reçoit un écart en kWh, une fourchette et un niveau de confiance, faible dans les `r cfg$edge_months` premiers et derniers mois.
+
+Sur les `r n_small` sites ordinaires, `r sus$facts$n_bills_suspect` factures sont à vérifier, sur `r sus$n_suspect_sites` sites. Le changement durable domine (`r st[["lasting_change"]]` cas), devant l'écart ponctuel (`r st[["point"]]`). Hors changements durables, les écarts totalisent `r ks(sus$gap_by_direction[["over"]])` kWh au-dessus de l'attendu et `r ks(sus$gap_by_direction[["under"]])` kWh en dessous. Un changement durable est plus probablement un changement d'équipement ou de contrat qu'une erreur : il est à confirmer auprès du site. Aucune facture des deux gros sites n'est signalée. Le @tbl-suspects-high donne les `r n_top` plus gros écarts de confiance élevée.
+
+```{r}
+#| label: tbl-suspects-high
+#| tbl-cap: "Plus gros écarts parmi les lignes suspectes de confiance élevée (sites ordinaires, kWh)."
+#| tbl-colwidths: [10, 11, 14, 11, 11, 10, 7, 26]
 knitr::kable(tab_sus(top), align = "lllrrrll")
 ```
 
-Ces lignes sont un point de départ pour la vérification, pas un constat d'erreur : une facture à vérifier peut avoir une explication connue du gestionnaire (travaux, mise en service, résiliation). `r if (nrow(sus$big) == 0) "Aucune facture des deux gros sites n'est signalée avec ce réglage." else paste0("Les deux gros sites, traités à part, ont ", nrow(sus$big), " lignes suspectes, listées en annexe.")`
-
-### Les cas de l'énoncé
+## Les cas de l'énoncé
 
 ```{r}
 #| include: false
@@ -250,9 +121,7 @@ row_of <- function(site, types, month = NULL) {
   if (!is.null(month)) r <- r[format(r$month, "%Y-%m") == month, ]
   r
 }
-brk_types <- c("lasting_change", "network_change")
 c89 <- row_of("0089KO", "compensated_pair")
-c89b <- row_of("0089KO", brk_types, "2019-08")
 c1067 <- row_of("1067KO", "lasting_change", "2019-07")
 ramp <- function(s) row_of(s, "transition")
 change_2020 <- function(s) {
@@ -266,20 +135,16 @@ r86 <- change_2020("1986KO")
 c254 <- row_of("0254BB", "lasting_change")
 c254 <- c254[format(c254$month, "%Y") == "2019", ]
 c1240 <- row_of("1240BR", "lasting_change", "2021-05")
-i1240 <- row_of("1240BR", "indeterminate")
-i1240 <- i1240[i1240$month > c1240$month, ]
-c1911 <- row_of("1911BB", brk_types, "2019-10")
-type_txt <- function(r) tolower(unname(tlab[r$type]))
 ```
 
-**0089KO.** Juin et août 2019 forment une paire compensée (sous-facturation puis rattrapage) : `r num(c89$kwh[1])` kWh en juin, `r num(c89$kwh[2])` kWh en août. Sur juin à août, le total facturé (`r num(sus$pair_0089[["billed"]])` kWh) est proche de ce qu'on attend au nouveau niveau du site (`r num(sus$pair_0089[["expected_after"]])` kWh), qui s'installe en août (`r pct(c89b$change, signed = TRUE)`, `r type_txt(c89b)`). Mai 2019, également cité par l'énoncé, reste dans la variation habituelle du site.
+- **0089KO.** Juin et août 2019 forment une paire compensée, une sous-facturation (`r num(c89$kwh[1])` kWh) puis son rattrapage (`r num(c89$kwh[2])` kWh). Sur juin à août, le total facturé (`r num(sus$pair_0089[["billed"]])` kWh) est proche de ce qu'on attend au nouveau niveau du site (`r num(sus$pair_0089[["expected_after"]])` kWh), qui s'installe en août.
+- **1067KO.** Changement durable en juillet 2019 (`r pct(c1067$change, signed = TRUE)`).
+- **1088KO, 1978KO et 1986KO.** Les trois montent en `r mlist(ramp("1088KO")$month)` vers un palier nettement plus haut (`r pct(r88$change, signed = TRUE)`, `r pct(r78$change, signed = TRUE)` et `r pct(r86$change, signed = TRUE)`). Ce sont trois changements durables. Avec trois sites seulement, nous ne pouvons pas distinguer un événement commun d'une coïncidence.
+- **0254BB.** L'été 2019 apparaît comme deux changements de niveau rapprochés (`r pct(c254$change[1], signed = TRUE)` en `r mname(c254$month[1])`, `r pct(c254$change[2], signed = TRUE)` en `r mname(c254$month[2])`). Soit ce sont des factures à vérifier, soit le site avait une saison propre, perdue en 2020 comme le dit l'énoncé. Un seul été ne permet pas de trancher.
+- **1240BR**, absent de l'énoncé. La facture de mai 2021 (`r num(c1240$kwh)` kWh contre `r num(c1240$expected_kwh)` attendus) ouvre un palier `r pct(abs(c1240$change))` plus bas. C'est le plus gros écart en kWh des sites ordinaires.
 
-**1067KO.** Changement durable en `r mname(c1067$month)` (`r pct(c1067$change, signed = TRUE)`, cumul de `r ks(c1067$cumul_kwh)` kWh), confiance `r clab(c1067$confidence)`.
+Ces lignes sont des factures à vérifier, pas des erreurs avérées : une facture inhabituelle peut avoir une explication connue du gestionnaire (travaux, mise en service, résiliation).
 
-**1088KO, 1978KO et 1986KO.** Les trois sites montent en `r mlist(ramp("1088KO")$month)` (transitions) vers un palier nettement plus haut : `r pct(r88$change, signed = TRUE)` pour 1088KO, `r pct(r78$change, signed = TRUE)` pour 1978KO, `r pct(r86$change, signed = TRUE)` pour 1986KO. La rupture est datée en `r mname(r88$month)` pour 1088KO et 1986KO, en `r mname(r78$month)` pour 1978KO : dans une montée, le mois du nouveau palier n'est connu qu'à un ou deux mois près. Ces mois ne réunissent pas plus de hausses que le hasard n'en produit : ce sont trois changements durables suspects. Le même événement a pu toucher les trois sites, mais avec trois sites seulement, les données ne le distinguent pas d'une coïncidence.
+## Réponse : y a-t-il des erreurs de facturation ?
 
-**0254BB.** L'été 2019 apparaît comme deux changements de niveau rapprochés (`r pct(c254$change[1], signed = TRUE)` en `r mname(c254$month[1])`, `r pct(c254$change[2], signed = TRUE)` en `r mname(c254$month[2])`) plutôt que comme un écart temporaire : c'est le cas, mesuré par la simulation, d'un épisode de trois mois qui forme un palier court. Deux lectures restent possibles : des factures à vérifier, ou une saison haute propre au site, perdue à partir de 2020 comme le dit l'énoncé. Avec un seul été observé, la méthode ne peut pas trancher.
-
-**1240BR.** La facture de `r mname(c1240$month)` (`r num(c1240$kwh)` kWh contre `r num(c1240$expected_kwh)` attendus) ouvre un nouveau palier `r pct(abs(c1240$change))` plus bas, changement durable de confiance `r clab(c1240$confidence)`. `r if (nrow(i1240) == 1) "La facture signalée ensuite" else "Les factures signalées ensuite"` (`r mlist(i1240$month)`) `r if (nrow(i1240) == 1) "est indéterminée" else "sont indéterminées"` : la série est trop courte pour savoir si ce niveau se maintient.
-
-**1911BB.** Le site monte vers un nouveau palier en `r mlist(ramp("1911BB")$month)` (`r pct(c1911$change, signed = TRUE)`). Octobre 2019 réunit plus de hausses que le hasard : la rupture est rangée en `r type_txt(c1911)`, non suspecte.
+Probablement quelques-unes, mais peu d'erreurs franches : `r nrow(res$periods)` factures qui ne couvrent pas leur mois, `r nrow(sus$pairs)` paires compensées (dont la sous-facturation de 0089KO citée dans l'énoncé) et `r st[["point"]]` écarts ponctuels sur une seule facture. L'essentiel des écarts en kWh vient d'autre chose : des changements durables de niveau, sur `r length(unique(ord$site[ord$type == "lasting_change"]))` sites, qui ressemblent davantage à des changements sur les sites (équipement, contrat) qu'à des erreurs. La méthode voit rarement les petits écarts, de quelques pour cent ; en revanche, à partir de 20 %, elle en signale près de neuf sur dix, avec peu de fausses alertes.
