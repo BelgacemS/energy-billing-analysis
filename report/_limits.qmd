@@ -6,7 +6,7 @@ l_cov <- function(l) fc$coverage$inside[fc$coverage$construction == fc$construct
 l_grid <- cal$grid
 l_K <- sort(unique(l_grid$K))
 l_K_ok <- min(l_grid$K[l_grid$admissible])
-stopifnot(l_K_ok == cal$chosen$K)
+stopifnot(l_K_ok == cal$chosen$K, length(unique(l_grid$K[l_grid$admissible])) == 1, l_K_ok == max(l_K))
 # Shared months: one test per testable month and direction, most with no break (p = 1).
 l_n_tests <- 2 * sus$n_testable_months
 l_p <- c(sus$shared_months$p_value, rep(1, l_n_tests - nrow(sus$shared_months)))
@@ -19,7 +19,7 @@ stopifnot(l_ts$nsdiffs_seas == 1, l_ts$nsdiffs_ocsb == 1,
 
 **Pas de vérité terrain.** Aucune facture n'est connue comme erronée. Les taux de détection et de fausses alertes viennent d'anomalies placées dans des données simulées à partir des factures réelles : ils mesurent la capacité de la méthode à retrouver ces formes d'anomalies, pas le nombre réel d'erreurs. Les lignes signalées sont des factures à vérifier, pas des erreurs avérées.
 
-**Sensibilité limitée.** Le réglage retenu privilégie peu de fausses alertes. Un écart de 5 % sur une facture passe le plus souvent inaperçu. Le seuil K = `r cal$chosen$K` est le plus petit des seuils essayés (de `r dec(min(l_K), 1)` à `r dec(max(l_K), 1)`) qui respecte la limite de `r pct(cal$config$calibration_fa_max)` de fausses alertes : un seuil plus élevé ferait encore moins de fausses alertes, mais détecterait moins. La règle des allers-retours a été ajoutée après la simulation, qui n'en tient pas compte ; elle ne reclasse que `r lf$n_trips` cas, et les sites qui alternent hausses et baisses restent lus comme une suite de changements.
+**Sensibilité limitée.** Le réglage retenu privilégie peu de fausses alertes. Un écart de 5 % sur une facture passe le plus souvent inaperçu. Le seuil K = `r cal$chosen$K` est le seul des seuils essayés (de `r dec(min(l_K), 1)` à `r dec(max(l_K), 1)`) qui respecte la limite de `r pct(cal$config$calibration_fa_max)` de fausses alertes, et le plus élevé de la grille : un seuil plus élevé n'a pas été testé. La règle des allers-retours a été ajoutée après la simulation, qui n'en tient pas compte ; elle ne reclasse que `r lf$n_trips` cas, et les sites qui alternent hausses et baisses restent lus comme une suite de changements.
 
 **Historique court.** Avec `r pan$n_months` mois, l'effet du mois repose sur deux années complètes au plus ; il est donc estimé en commun pour les sites ordinaires, et l'effet propre d'un site reste mal connu (cas de 0254BB en 2019). Les changements communs à plusieurs sites sont repérés par un test fait mois par mois, sans correction pour les `r l_n_tests` combinaisons de mois et de sens testées : avec une correction de Benjamini-Hochberg, aucun mois ne serait retenu (plus petite valeur p corrigée : `r num(min(l_bh), 2)`). C'est pourquoi ces changements restent dans la liste à confirmer et que l'étiquette « commun » n'est qu'une indication.
 
