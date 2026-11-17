@@ -25,7 +25,7 @@ tlab <- sus$type_labels
 short <- c(irregular_period = "Irrégulière", point = "Ponctuel", implausible = "Implausible",
            temporary = "Temporaire", compensated_pair = "Paire", round_trip = "Aller-retour",
            lasting_change = "Durable", indeterminate = "Indéterminé", transition = "Transition",
-           network_change = "Commun")
+           network_change = "Simultané")
 list_lab <- c(error = "Erreur probable", change = "À confirmer", indeterminate = "Indéterminé")
 clab <- function(x) unname(sus$conf_labels[as.character(x)])
 cfg <- sus$config
@@ -109,7 +109,7 @@ Sans vérité terrain, nous ne pouvons pas compter directement les erreurs trouv
 fig("calibration_detection")
 ```
 
-Avec ce réglage, la méthode fait environ `r pct(ch$fa, 0)` de fausses alertes (@fig-calibration). Elle signale `r pct(det("spike", 0.2))` des écarts d'une facture de 20 %, `r pct(det("spike", 0.1))` de ceux de 10 % et seulement `r pct(det("spike", 0.05))` de ceux de 5 %. Elle trouve `r pct(det("level_break", 0.2))` des changements de niveau de 20 %. Les écarts temporaires et les paires compensées de trois mois sont bien signalés, mais le plus souvent lus comme deux changements de niveau rapprochés, car trois mois suffisent à former un palier. Nous corrigeons en partie ce défaut par la règle des allers-retours décrite plus bas, ajoutée après la simulation, qui n'en tient donc pas compte. Le filtre de Hampel, à un taux de fausses alertes comparable (`r pct(h_fa, 0)`), détecte moins (`r pct(hd("spike", 0.2))` des écarts de 20 %) et ne dit rien des changements de niveau.
+Avec ce réglage, la méthode fait environ `r pct(ch$fa, 0)` de fausses alertes sur les panels simulés sans anomalie. Elle signale (@fig-calibration) `r pct(det("spike", 0.2))` des écarts d'une facture de 20 %, `r pct(det("spike", 0.1))` de ceux de 10 % et seulement `r pct(det("spike", 0.05))` de ceux de 5 %. Elle trouve `r pct(det("level_break", 0.2))` des changements de niveau de 20 %. Les écarts temporaires et les paires compensées de trois mois sont bien signalés, mais le plus souvent lus comme deux changements de niveau rapprochés, car trois mois suffisent à former un palier. Nous corrigeons en partie ce défaut par la règle des allers-retours décrite plus bas, ajoutée après la simulation, qui n'en tient donc pas compte. Le filtre de Hampel, à un taux de fausses alertes comparable (`r pct(h_fa, 0)`), détecte moins (`r pct(hd("spike", 0.2))` des écarts de 20 %) et ne dit rien des changements de niveau.
 
 ## Factures à vérifier
 
@@ -119,7 +119,7 @@ Chaque facture hors palier reçoit un type, selon la forme de l'écart dans le t
 - **écart temporaire** : deux à `r cfg$temporary_max_months` mois de suite dans le même sens, puis retour ;
 - **aller-retour de niveau** : deux changements de niveau de sens opposés, à `r pan$config$plateau_min_months` mois d'écart, le site revenant à moins de `r pct(cfg$level_shift_min)` de son niveau d'avant ; la segmentation y voit deux paliers, nous le traitons comme un écart temporaire de trois mois, jugé au niveau d'avant ;
 - **paire compensée** : une facture trop basse et une trop haute, proches, dont le total correspond à ce qu'on attend sur la période (sous-facturation puis rattrapage, ou l'inverse) ;
-- **changement durable** : le site passe sur un palier qui diffère de plus de `r pct(cfg$level_shift_min)` du précédent ; il est dit commun quand plus de sites changent de niveau dans le même sens ce mois-là que le hasard n'en produit d'ordinaire ;
+- **changement durable** : le site passe sur un palier qui diffère de plus de `r pct(cfg$level_shift_min)` du précédent ; il est dit simultané quand plusieurs sites changent de niveau dans le même sens le même mois, en nombre inhabituel d'après un test mois par mois (une indication seulement, voir les limites) ;
 - **indéterminé** : écart en fin de série, dont on ne voit pas encore la suite, ou qui ne revient pas à son palier ;
 - **période irrégulière** : la facture ne couvre pas exactement son mois.
 
@@ -132,7 +132,7 @@ La transition, montée progressive vers un nouveau palier, est affichée sur les
 plural <- c(point = "écarts ponctuels", temporary = "factures d'écarts temporaires",
             round_trip = "factures d'allers-retours", compensated_pair = "factures de paires compensées",
             irregular_period = "périodes irrégulières", implausible = "valeurs implausibles",
-            lasting_change = "changements durables", network_change = "changements communs")
+            lasting_change = "changements durables", network_change = "changements simultanés")
 type_count <- function(types) {
   types <- types[ty[types] > 0]
   paste(paste(ty[types], plural[types]), collapse = ", ")
@@ -160,7 +160,7 @@ knitr::kable(tab_sus(head(err, n_top)), align = "lllrrrl", row.names = FALSE)
 
 La liste des indéterminés contient aussi une forte sous-facturation au milieu de la série : `r ind_mid$site[1]` en `r mlist(im$month)`, facturé `r paste(num(im$kwh), collapse = " et ")` kWh contre `r paste(num(im$expected_kwh), collapse = " et ")` attendus (environ `r pct(1 - sum(im$kwh) / sum(im$expected_kwh))` de moins), classée indéterminée parce que le site ne revient pas ensuite à son ancien palier. Elle est à vérifier en priorité.
 
-**Changements à confirmer.** Leur écart mesure la hauteur de la marche entre deux paliers, pas un écart de facturation ; « Commun » signale un mois où plusieurs sites changent de niveau en même temps. Ils ressemblent davantage à des évolutions des sites (équipement, raccordement, contrat) qu'à des erreurs, sans que les factures seules permettent de trancher. Le @tbl-changes donne les `r n_chg` plus grands. `r ty[["network_change"]]` des `r lst("change", "bills")` changements tombent un mois où plusieurs sites changent de niveau dans le même sens : c'est une indication, pas une preuve, car le test est fait mois par mois (voir les limites).
+**Changements à confirmer.** Leur écart mesure la hauteur de la marche entre deux paliers, pas un écart de facturation ; « Simultané » signale un mois où plusieurs sites changent de niveau en même temps. Cumulés depuis leur date et nets par site, ces changements représentent `r ks(chg_up)` et `r ks(chg_down)` kWh par rapport au niveau d'avant (le plus gros poids, `r names(which.max(abs(chg_site)))` : `r ks(chg_site[which.max(abs(chg_site))])` kWh). Ils ressemblent davantage à des évolutions des sites (équipement, raccordement, contrat) qu'à des erreurs, sans que les factures seules permettent de trancher. Le @tbl-changes donne les `r n_chg` plus grands. `r ty[["network_change"]]` des `r lst("change", "bills")` changements tombent un mois où plusieurs sites changent de niveau dans le même sens : c'est une indication, pas une preuve, car le test est fait mois par mois (voir les limites).
 
 ```{r}
 #| label: tbl-changes
@@ -217,4 +217,4 @@ Ces lignes sont des factures à vérifier, pas des erreurs avérées : une factu
 
 ## Réponse : y a-t-il des erreurs de facturation ?
 
-Oui, probablement, mais peu, et pour de faibles montants. `r lst("error", "bills")` factures, sur `r lst("error", "sites")` sites, ont le profil d'une erreur, pour `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires, et une partie d'entre elles sera infondée (environ `r num(fa_expected)` fausses alertes attendues sur l'ensemble des listes). Le « oui » repose surtout sur quelques cas nets : la facture de `r half$site` qui couvre un demi-mois pour le montant d'un mois, la paire sous-facturation puis rattrapage de 0089KO en 2019, dont le solde reste à établir, la sous-facturation de `r ind_mid$site[1]` en 2019 et, avec moins de certitude parce qu'elle tombe en début de série, celle de `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])`. Les petits écarts isolés de la liste peuvent, eux, être en partie de fausses alertes. L'essentiel des signalements, `r lst("change", "bills")` changements de niveau sur `r lst("change", "sites")` sites, ressemble davantage à des évolutions des sites qu'à des erreurs, et se confirme sur le terrain plutôt qu'auprès du fournisseur. La méthode voit rarement les petits écarts, de quelques pour cent ; à partir de 20 %, elle en signale près de neuf sur dix.
+Oui, probablement, mais peu, et pour de faibles montants. `r lst("error", "bills")` factures, sur `r lst("error", "sites")` sites, ont le profil d'une erreur, pour `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires, et une partie d'entre elles sera infondée (environ `r num(fa_expected)` fausses alertes attendues sur l'ensemble des listes). Le « oui » repose surtout sur quelques cas nets : la facture de `r half$site` qui couvre un demi-mois pour le montant d'un mois, la paire sous-facturation puis rattrapage de 0089KO en 2019, dont le solde reste à établir, la sous-facturation de `r ind_mid$site[1]` en 2019 et, avec moins de certitude parce qu'elle tombe en début de série, celle de `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])`. Les petits écarts isolés de la liste peuvent, eux, être en partie de fausses alertes. L'essentiel des signalements, `r lst("change", "bills")` changements de niveau sur `r lst("change", "sites")` sites, ressemble davantage à des évolutions des sites qu'à des erreurs, et se confirme sur le terrain plutôt qu'auprès du fournisseur. Cette réponse dépend toutefois de notre hypothèse qu'un écart qui dure n'est pas une erreur : si certains de ces changements étaient des erreurs persistantes, les montants en jeu seraient d'un autre ordre (`r ks(chg_up)` et `r ks(chg_down)` kWh depuis leur date). La méthode voit rarement les petits écarts, de quelques pour cent ; à partir de 20 %, elle en signale près de neuf sur dix.

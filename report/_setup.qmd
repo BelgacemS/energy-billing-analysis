@@ -48,6 +48,13 @@ lf <- sus$list_facts
 lst <- function(l, col) lf$lists[lf$lists$list == l, col]
 err_kwh_share <- (lst("error", "over_kwh") - lst("error", "under_kwh")) / lf$kwh_ordinary
 fa_expected <- cal$chosen$fa * lf$n_bills_ordinary  # false alerts at the simulated rate
+# Changes to confirm: kWh billed above / below the level before each change, from the change to November 2021.
+chg_rows <- sus$flagged[!sus$flagged$big & sus$flagged$list == "change", ]
+stopifnot(!anyNA(chg_rows$cumul_kwh))
+# Net per site: a site that goes up then down again does not count both steps.
+chg_site <- tapply(chg_rows$cumul_kwh, chg_rows$site, sum)
+chg_up <- sum(chg_site[chg_site > 0])
+chg_down <- sum(chg_site[chg_site < 0])
 
 # Big sites: per-site MASE (validation: models.rds, test: forecast.rds), kWh
 # errors on the test months and the per-day naive for December 2021.
