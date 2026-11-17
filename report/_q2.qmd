@@ -22,7 +22,7 @@ n_rw <- mo$degenerate_models[["ARIMA(0,1,0)(0,0,0)[12]"]]
 
 Une méthode de prévision se juge sur des mois qu'elle n'a pas vus. Nous appliquons donc la validation croisée à origine glissante. Pour prévoir un mois, la méthode ne dispose que des factures des mois précédents. L'origine avance ensuite d'un mois. Tout ce qui est estimé sur les données (effet du mois, paliers) est recalculé à chaque origine.
 
-Les `r n_val` mois de `r mname(min(tg))` à `r mname(max(tg))` servent de **validation**. C'est sur eux que nous faisons tous les choix. Ils comprennent décembre 2020, le seul mois de même nature que le mois à prévoir. Les `r length(bl$test_targets)` mois de `r mname(min(bl$test_targets))` à `r mname(max(bl$test_targets))` forment le **test**. Nous ne les avons lus qu'une fois à la fin pour mesurer la précision de la méthode retenue et choisir la construction des intervalles (section 4.4). La précision est mesurée par la MASE (Hyndman et Koehler, 2006), c'est-à-dire l'erreur absolue d'une prévision divisée par l'erreur moyenne de la prévision naïve à un mois sur l'historique du site. Ce rapport est ensuite moyenné sur les sites et les mois. Elle permet de comparer des sites de tailles très différentes. Une MASE inférieure à 1 signifie une erreur plus faible que l'erreur passée de la naïve, pas une erreur plus faible que la naïve sur les mêmes mois. Pour le savoir, il faut comparer les MASE des deux méthodes.
+Les `r n_val` mois de `r mname(min(tg))` à `r mname(max(tg))` servent de **validation**. C'est sur eux que nous faisons tous les choix. Ils comprennent décembre 2020, le seul mois de même nature que le mois à prévoir. Les `r length(bl$test_targets)` mois de `r mname(min(bl$test_targets))` à `r mname(max(bl$test_targets))` forment le **test**. Nous ne les avons lus qu'une fois à la fin pour mesurer la précision de la méthode retenue et choisir la construction des intervalles (section 4.4). La précision est mesurée par la MASE (Hyndman et Koehler, 2006), c'est-à-dire l'erreur absolue d'une prévision divisée par l'erreur moyenne de la prévision naïve à un mois sur l'historique du site. Ce ratio est ensuite moyenné sur les sites et les mois. La MASE permet de comparer des sites de tailles très différentes. Une MASE inférieure à 1 signifie une erreur plus faible que l'erreur passée de la naïve, pas une erreur plus faible que la naïve sur les mêmes mois. Pour le savoir, il faut comparer les MASE des deux méthodes.
 
 ## Méthodes comparées
 
@@ -109,7 +109,7 @@ knitr::kable(data.frame(Groupe = sp$class, Sites = sp$n, `kWh par jour` = num(sp
              align = "lrrrrrl")
 ```
 
-Nous avons ajouté trois variantes aux méthodes précédentes, la naïve corrigée de l'effet du mois, un niveau robuste (lissage du dernier palier qui écarte les factures hors palier) et la moyenne de ces deux prévisions et de la naïve (Bates et Granger, 1969). Pour chaque groupe, la règle fixée à l'avance retient la méthode la plus précise, ou la plus simple si l'écart est de moins de `r pct(config$selection_tolerance)` (@tbl-select).
+Nous avons ajouté trois variantes aux méthodes précédentes, la naïve corrigée de l'effet du mois, un niveau robuste (lissage du dernier palier en écartant les factures hors palier) et la moyenne de ces deux prévisions et de la naïve (Bates et Granger, 1969). Pour chaque groupe, la règle fixée à l'avance retient la méthode la plus précise, ou la plus simple si l'écart est de moins de `r pct(config$selection_tolerance)` (@tbl-select).
 
 ```{r}
 #| label: tbl-select
