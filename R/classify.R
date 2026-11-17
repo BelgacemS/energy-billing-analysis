@@ -247,3 +247,73 @@ longest_temporary <- function(tab) {
   ep <- tab$episode[tab$type == "temporary"]
   if (length(ep) == 0) 0L else max(table(ep))
 }
+
+#' Level round trips: consecutive breaks above `min_change` of opposite sign,
+#' at most `max_months` apart, the second one bringing the site back within
+#' `min_change` of its level before the first (no break between the two outer
+#' levels). When two candidate trips share a break (levels high, low, high,
+#' low), which part is the gap is ambiguous and neither is kept. Returns site,
+#' start (first month of the gap), end (last month before the return) and
+#' level (log level before).
+find_round_trips <- function(breaks, max_months, min_change) {
+  empty <- data.frame(site = character(), start = as.Date(character()),
+                      end = as.Date(character()), level = numeric())
+  b <- breaks[abs(breaks$change) > min_change, ]
+  b <- b[order(b$site, b$month), ]
+  month_index <- function(m) 12L * as.integer(format(m, "%Y")) + as.integer(format(m, "%m"))
+  out <- lapply(split(b, b$site), function(d) {
+    if (nrow(d) < 2) return(NULL)
+    i <- seq_len(nrow(d) - 1)
+    cand <- sign(d$change[i]) != sign(d$change[i + 1]) &
+      month_index(d$month[i + 1]) - month_index(d$month[i]) <= max_months &
+      abs(exp(d$level_after[i + 1] - d$level_before[i]) - 1) <= min_change
+    keep <- cand & !c(FALSE, cand[-length(cand)]) & !c(cand[-1], FALSE)
+    if (!any(keep)) return(NULL)
+    k <- i[keep]
+    data.frame(site = d$site[k], start = d$month[k],
+               end = do.call(c, lapply(d$month[k + 1], function(m) seq(m, by = "-1 month", length.out = 2)[2])),
+               level = d$level_before[k])
+  })
+  out <- do.call(rbind, c(list(empty), out))
+  rownames(out) <- NULL
+  out
+}
+
+#' Replaces each round trip of `trips` in a classify_bills table by one
+#' temporary episode, typed round_trip: every bill from `start` to `end`,
+#' judged at the level before the trip (gap, range, z and confidence computed
+#' as in classify_bills). Rows of those months and the break rows of the
+#' return month are dropped; the return month gets no row, the site is back on
+#' its level. `bills`: panel_fit()$bills.
+apply_round_trips <- function(tab, bills, trips, cfg) {
+  if (nrow(trips) == 0) return(tab)
+  r <- cfg$range_sigmas
+  drop <- rep(FALSE, nrow(tab))
+  new <- lapply(seq_len(nrow(trips)), function(k) {
+    t <- trips[k, ]
+    d <- bills[bills$site == t$site, ]
+    d <- d[order(d$month), ]
+    ret <- seq(t$end, by = "month", length.out = 2)[2]
+    in_trip <- tab$site == t$site & tab$month >= t$start & tab$month <= t$end
+    return_break <- tab$site == t$site & tab$month == ret & is.na(tab$episode) &
+      tab$type %in% c("lasting_change", "network_change", "indeterminate")
+    drop <<- drop | in_trip | return_break
+    i <- which(d$month >= t$start & d$month <= t$end)
+    expected <- exp(t$level + d$effect[i]) * d$month_days[i]
+    z <- (d$y[i] - t$level) / d$sigma[i]
+    edge <- i <= cfg$edge_months | i > nrow(d) - cfg$edge_months
+    data.frame(
+      site = t$site, suffix = d$suffix[i], big = any(tab$big[tab$site == t$site]),
+      month = d$month[i], kwh = d$kwh[i], expected_kwh = expected,
+      gap_kwh = d$kwh[i] - expected,
+      direction = ifelse(d$kwh[i] > expected, "over", "under"),
+      gap_low = d$kwh[i] - expected * exp(r * d$sigma[i]),
+      gap_high = d$kwh[i] - expected * exp(-r * d$sigma[i]),
+      z = z, type = "round_trip", episode = paste0(t$site, "-rt", k), edge = edge,
+      confidence = confidence_level(z, edge, rep(FALSE, length(i)), cfg$high_confidence_z),
+      suspect = TRUE, pair_order = NA_character_, pair_net_kwh = NA_real_,
+      cumul_kwh = NA_real_, cumul_from = as.Date(NA), change = NA_real_,
+      stringsAsFactors = FALSE)
+  })
+  rank_flagged(do.call(rbind, c(list(tab[!drop, ]), new)))
+}

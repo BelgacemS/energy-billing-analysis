@@ -299,3 +299,44 @@ test_that("a shared month must beat chance, not only reach 3 sites", {
   expect_false(out$shared[out$direction == "down"])
   expect_false(any(up$shared[up$n == 1]))
 })
+
+test_that("find_round_trips keeps opposite breaks that come back, close enough", {
+  m <- seq(as.Date("2019-01-01"), by = "month", length.out = 35)
+  lv <- log(100)
+  brk <- data.frame(
+    site = c("A", "A", "B", "B", "C", "C", "D", "D"),
+    month = m[c(10, 13, 10, 13, 10, 14, 10, 13)],
+    level_before = c(lv, lv + log(1.5), lv, lv + log(1.5), lv, lv + log(1.5), lv, lv + log(1.5)),
+    level_after = c(lv + log(1.5), lv + log(1.05), lv + log(1.5), lv + log(1.3),
+                    lv + log(1.5), lv, lv + log(1.5), lv + log(2)))
+  brk$change <- exp(brk$level_after - brk$level_before) - 1
+  rt <- find_round_trips(brk, max_months = 3, min_change = 0.10)
+  # A: up 50 % for 3 months, back within 10 %. B: does not come back (+30 %).
+  # C: 4 months apart. D: same sign.
+  expect_equal(rt$site, "A")
+  expect_equal(rt$start, m[10])
+  expect_equal(rt$end, m[12])
+  expect_equal(rt$level, lv)
+  expect_equal(nrow(find_round_trips(brk[0, ], 3, 0.10)), 0)
+  # E: high, low, high: two overlapping candidates, ambiguous, none kept.
+  e <- data.frame(site = "E", month = m[c(10, 13, 16)],
+                  level_before = c(lv, lv + log(1.5), lv), level_after = c(lv + log(1.5), lv, lv + log(1.5)))
+  e$change <- exp(e$level_after - e$level_before) - 1
+  expect_equal(nrow(find_round_trips(e, 3, 0.10)), 0)
+})
+
+test_that("apply_round_trips turns the two breaks into one temporary episode", {
+  lvl <- rep(base, n_months)
+  lvl[10:12] <- base + log(1.5)
+  p <- make_site("A", level = lvl)
+  out <- classify(p)
+  expect_equal(sum(out$type == "lasting_change"), 2)
+  rt <- find_round_trips(make_breaks(p), cfg3$plateau_min_months, cfg3$level_shift_min)
+  out2 <- apply_round_trips(out, p, rt, cfg3)
+  expect_equal(sum(out2$type == "lasting_change"), 0)
+  expect_equal(sort(out2$month[out2$type == "round_trip"]), p$month[10:12])
+  # judged at the level before the trip: billed 1.5 times the expected value
+  expect_equal(out2$kwh[out2$type == "round_trip"] / out2$expected_kwh[out2$type == "round_trip"],
+               rep(1.5, 3))
+  expect_true(all(out2$suspect[out2$type == "round_trip"]))
+})

@@ -48,10 +48,11 @@ $env:DATA_PATH="C:\path\to\file.csv"; Rscript run_all.R   # Windows PowerShell
 | `05_calibrate.R` | 7, calibration by anomaly injection | `tables/calibration_grid.csv` |
 | `06_baselines.R` | 8, rolling-origin backtest of the baselines | `tables/backtest_baselines.csv` |
 | `07_models.R` | 9, course models site by site | `tables/models_accuracy.csv`, `tables/arima_diagnosis.csv` |
+| `07b_box_jenkins.R` | 9 bis, Box-Jenkins by hand on 0698BR, residuals of the naive | `tables/box_jenkins_0698BR.csv` |
 | `08_select.R` | 10, site classes and selection by class | `tables/selection_by_class.csv` |
 | `09_forecast.R` | 11, test months and December 2021 forecast | `tables/forecast_dec2021.csv` |
 
-Choice rules (thresholds, penalty, selection, intervals) are set in `R/config.R` and were written before each first run. The test months (June to November 2021) are used as forecast targets only in `09_forecast.R`; the forecasting scripts 06 to 08 stop before them.
+Choice rules (thresholds, penalty, selection, intervals) are set in `R/config.R` and were written before each first run. The test months (June to November 2021) are used as forecast targets only in `09_forecast.R`; the forecasting scripts 06 to 08 (07b included) stop before them.
 
 ## Layout
 
