@@ -152,6 +152,8 @@ dc <- fc$december
 amb <- dc[!is.na(dc$scenario_lasting), ]
 ord_dc <- dc[dc$class != "big", ]
 n_combo <- sum(ord_dc$method != "naive_per_day")
+combo <- ord_dc[ord_dc$method != "naive_per_day", ]
+combo_gap <- if (n_combo > 0) max(abs(combo$forecast - vapply(combo$site, naive_dec, numeric(1)))) else 0
 sig <- (log(dc$hi95) - log(dc$forecast)) / qnorm(0.975)  # log-scale sd of each site
 mean_gap <- sum(dc$forecast * (exp(sig^2 / 2) - 1))
 ```
@@ -186,4 +188,4 @@ knitr::kable(data.frame(Site = amb$site, `Écart passager` = num(amb$scenario_te
 
 ## Réponse : comment prévoir la consommation du mois suivant ?
 
-Pour les sites ordinaires, la meilleure méthode est la plus simple : reprendre la consommation par jour du dernier mois et la multiplier par le nombre de jours du mois à prévoir. Les modèles de lissage exponentiel et ARIMA ne font pas mieux, car le niveau des sites est proche d'une marche aléatoire, ponctuée de ruptures, dont la meilleure prévision est la dernière valeur. `r season_site`, seul site à saison marquée, se prévoit mieux avec le modèle saisonnier identifié par la démarche de Box-Jenkins. `r if (n_combo > 0) paste0("Pour ", n_combo, " sites ordinaires, la règle de choix par groupe retient une moyenne de méthodes dont la prévision ne s'écarte de la naïve que de quelques kWh. ") else ""`La règle simple se trompe de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)` en médiane sur des mois jamais vus. Elle doit être accompagnée de deux précautions : un intervalle pour chaque site, et une attention particulière aux sites peu fiables, dont la dernière facture peut annoncer un changement de niveau.
+Pour les sites ordinaires, la meilleure méthode est la plus simple : reprendre la consommation par jour du dernier mois et la multiplier par le nombre de jours du mois à prévoir. Les modèles de lissage exponentiel et ARIMA ne font pas mieux, car le niveau des sites est proche d'une marche aléatoire, ponctuée de ruptures, dont la meilleure prévision est la dernière valeur. `r season_site`, seul site à saison marquée, se prévoit mieux avec le modèle saisonnier identifié par la démarche de Box-Jenkins. `r if (n_combo > 0) paste0("Pour ", n_combo, " sites ordinaires, la règle de choix par groupe retient une moyenne de méthodes dont la prévision ne s'écarte de la naïve que de `r num(ceiling(combo_gap))` kWh au plus. ") else ""`La règle simple se trompe de `r pct(tacc("ordinary", "strategy", "rel_median"), 1)` en médiane sur des mois jamais vus. Elle doit être accompagnée de deux précautions : un intervalle pour chaque site, et une attention particulière aux sites peu fiables, dont la dernière facture peut annoncer un changement de niveau.
