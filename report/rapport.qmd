@@ -33,8 +33,6 @@ execute:
 
 {{< include _setup.qmd >}}
 
-{{< include _summary.qmd >}}
-
 {{< include _data.qmd >}}
 
 {{< include _descriptive.qmd >}}
