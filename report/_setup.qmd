@@ -60,4 +60,13 @@ last_bills <- pan$panel[pan$panel$month == max(pan$panel$month), ]
 naive_dec <- function(s) last_bills$kwh[last_bills$site == s] / last_bills$month_days[last_bills$site == s] * 31
 dec_of <- function(s) fc$december$forecast[fc$december$site == s]
 stopifnot(abs(dec_of(other_big) / naive_dec(other_big) - 1) < 1e-6)  # its ARIMA is the naive
+# First validation target where auto.arima gives the seasonal site a seasonal difference.
+season_val <- mo$backtest[mo$backtest$site == season_site & mo$backtest$method == "arima_noseason", ]
+season_first <- min(season_val$month[grepl("\\(\\d,1,\\d\\)\\[12\\]", season_val$info)])
+season_n_val <- sum(season_val$month >= season_first)
+# Seasonal model at the first test origin (fit on all months before the test, step 9 bis)
+# and for December 2021: the forecast is November x (December / November a year before).
+stopifnot(grepl("\\(0,1,0\\)\\(0,1,0\\)\\[12\\]", bj$auto_pre))
+kd_of <- function(s, m) with(pan$panel[pan$panel$site == s & format(pan$panel$month, "%Y-%m") == m, ], kwh / month_days)
+stopifnot(abs(dec_of(season_site) / (kd_of(season_site, "2021-11") * kd_of(season_site, "2020-12") / kd_of(season_site, "2020-11") * 31) - 1) < 1e-6)
 ```
