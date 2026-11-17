@@ -33,7 +33,7 @@ Les sites ordinaires facturent entre `r num(desc$small_kwh_range[1])` et `r num(
 ```{r}
 #| label: tbl-summary
 #| tbl-colwidths: [14, 9, 13, 12, 13, 14, 13, 12]
-#| tbl-cap: "Sites ordinaires par suffixe : consommation médiane de chaque site (quartiles entre sites), évolution de 2019 à 2021, part des sites qui changent de niveau (ruptures) et bruit d'un mois à l'autre (médianes entre sites)."
+#| tbl-cap: "Sites ordinaires par suffixe : consommation médiane de chaque site (quartiles entre sites), évolution (médiane des kWh par jour de janvier à novembre 2021 rapportée à celle des mêmes mois de 2019), part des sites qui changent de niveau (ruptures) et bruit d'un mois à l'autre (médianes entre sites)."
 summ <- function(x, label) {
   q <- quantile(x$median_kwh, c(0.25, 0.5, 0.75))
   data.frame(Suffixe = label, Sites = nrow(x), `1er quart.` = num(q[1]), `Médiane` = num(q[2]),
@@ -53,7 +53,7 @@ knitr::kable(tab, align = "lrrrrrrr", row.names = FALSE)
 fig("course_series")
 ```
 
-La tendance n'est pas le phénomène principal (@fig-series). Le total des sites ordinaires progresse de `r pct(cv$growth_total, 1)` sur la période, mais les sites évoluent très différemment : hors `r typ[["break"]]`, de `r pct(g_min$growth, signed = TRUE)` pour `r g_min$site` à `r pct(g_max$growth, signed = TRUE)` pour `r g_max$site`. Ces écarts viennent de sauts, pas de pentes régulières. `r typ[["break"]]`, lui, perd l'essentiel de sa consommation en `r month_fr(brk_month)`. La carte de la @fig-heatmap généralise ce constat à tous les sites : la plupart des lignes changent de couleur par paliers, souvent le même mois pour plusieurs sites. Au total, `r desc$n_level_change` des `r n_small` sites ordinaires (`r pct(desc$share_level_change)`) changent de niveau de plus de `r pct(config$level_shift_min)` au moins une fois. Certains mois en regroupent plusieurs ; la partie 3 examine si c'est plus que le hasard.
+La tendance n'est pas le phénomène principal (@fig-series). Le total des sites ordinaires progresse de `r pct(cv$growth_total, 1)` (moyenne mensuelle de 2021 rapportée à celle de 2019), mais les sites évoluent très différemment : hors `r typ[["break"]]`, de `r pct(g_min$growth, signed = TRUE)` pour `r g_min$site` à `r pct(g_max$growth, signed = TRUE)` pour `r g_max$site`. Ces écarts viennent de sauts, pas de pentes régulières. `r typ[["break"]]`, lui, perd l'essentiel de sa consommation en `r month_fr(brk_month)`. La carte de la @fig-heatmap généralise ce constat à tous les sites : la plupart des lignes changent de couleur par paliers, souvent le même mois pour plusieurs sites. Au total, `r desc$n_level_change` des `r n_small` sites ordinaires (`r pct(desc$share_level_change)`) changent de niveau de plus de `r pct(config$level_shift_min)` au moins une fois. Certains mois en regroupent plusieurs ; la partie 3 examine si c'est plus que le hasard.
 
 ```{r}
 #| label: fig-heatmap
