@@ -53,8 +53,7 @@ sens <- function(d) ifelse(d == "over", "sur", "sous")
 tab_sus <- function(d) {
   data.frame(Site = d$site, Mois = fr_month(d$month), Type = unname(short[d$type]),
              `Facturé` = num(d$kwh), Attendu = num(d$expected_kwh),
-             `Écart` = ks(d$gap_kwh), Fourchette = paste0(ks(d$gap_low), " à ", ks(d$gap_high)),
-             Confiance = clab(d$confidence), check.names = FALSE)
+             `Écart` = ks(d$gap_kwh), Confiance = clab(d$confidence), check.names = FALSE)
 }
 ```
 
@@ -115,7 +114,7 @@ Chaque facture hors palier reçoit un type, selon la forme de l'écart dans le t
 - **indéterminé** : écart en fin de série, dont on ne voit pas encore la suite, ou qui ne revient pas à son palier ;
 - **période irrégulière** : la facture ne couvre pas exactement son mois.
 
-La transition, montée progressive vers un nouveau palier, est affichée sur les graphiques mais n'est pas listée. Chaque ligne reçoit un écart en kWh, une fourchette et un niveau de confiance, faible dans les `r cfg$edge_months` premiers et derniers mois. Nous rangeons ensuite les types en trois listes (@tbl-lists), car ils n'appellent pas la même action : une erreur probable se vérifie auprès du fournisseur, un changement de niveau se confirme auprès du responsable du site.
+La transition, montée progressive vers un nouveau palier, est affichée sur les graphiques mais n'est pas listée. Chaque ligne reçoit un écart en kWh et un niveau de confiance, faible dans les `r cfg$edge_months` premiers et derniers mois. Nous rangeons ensuite les types en trois listes (@tbl-lists), car ils n'appellent pas la même action : une erreur probable se vérifie auprès du fournisseur, un changement de niveau se confirme auprès du responsable du site.
 
 ```{r}
 #| label: tbl-lists
@@ -139,13 +138,13 @@ knitr::kable(data.frame(
   check.names = FALSE), align = "lrrl")
 ```
 
-**Erreurs probables.** Elles totalisent `r ks(lst("error", "over_kwh"))` kWh au-dessus de l'attendu et `r ks(lst("error", "under_kwh"))` kWh en dessous, soit `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires. Le @tbl-errors donne les `r n_top` plus gros écarts ; la liste complète des factures signalées est en annexe. La plus forte sous-facturation ponctuelle, `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])` (`r num(err$kwh[err$type == "point"][1])` kWh facturés contre `r num(err$expected_kwh[err$type == "point"][1])` attendus), n'a qu'une confiance `r clab(err$confidence[err$type == "point"][1])` : c'est `r if (err$edge[err$type == "point"][1]) "un des premiers mois de la série, où le niveau du site est moins bien connu" else "un mois où le niveau du site est moins bien connu"`.
+**Erreurs probables.** Elles totalisent `r ks(lst("error", "over_kwh"))` kWh au-dessus de l'attendu et `r ks(lst("error", "under_kwh"))` kWh en dessous, soit `r pct(err_kwh_share, 1)` des kWh facturés aux sites ordinaires. Le @tbl-errors donne les `r n_top` plus gros écarts ; la liste complète des factures signalées est disponible sur demande. La plus forte sous-facturation ponctuelle, `r err$site[err$type == "point"][1]` en `r mname(err$month[err$type == "point"][1])` (`r num(err$kwh[err$type == "point"][1])` kWh facturés contre `r num(err$expected_kwh[err$type == "point"][1])` attendus), n'a qu'une confiance `r clab(err$confidence[err$type == "point"][1])` : c'est `r if (err$edge[err$type == "point"][1]) "un des premiers mois de la série, où le niveau du site est moins bien connu" else "un mois où le niveau du site est moins bien connu"`.
 
 ```{r}
 #| label: tbl-errors
 #| tbl-cap: "Erreurs probables : les plus gros écarts (sites ordinaires, kWh)."
-#| tbl-colwidths: [10, 9, 16, 11, 12, 9, 20, 13]
-knitr::kable(tab_sus(head(err, n_top)), align = "lllrrrll", row.names = FALSE)
+#| tbl-colwidths: [12, 11, 18, 14, 14, 13, 18]
+knitr::kable(tab_sus(head(err, n_top)), align = "lllrrrl", row.names = FALSE)
 ```
 
 La liste des indéterminés contient aussi une forte sous-facturation au milieu de la série : `r ind_mid$site[1]` en `r mlist(ind_mid$month[ind_mid$site == ind_mid$site[1]])`, de `r num(min(abs(ind_mid$z[ind_mid$site == ind_mid$site[1]])))` à `r num(max(abs(ind_mid$z[ind_mid$site == ind_mid$site[1]])))` fois le bruit sous l'attendu, classée indéterminée parce que le site ne revient pas ensuite à son ancien palier. Elle est à vérifier en priorité.

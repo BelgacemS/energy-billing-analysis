@@ -31,7 +31,7 @@ stopifnot(l_ts$nsdiffs_seas == 1, l_ts$nsdiffs_ocsb == 1,
 
 Les factures contiennent probablement quelques erreurs, mais peu, et pour de faibles montants : l'essentiel des signalements vient de changements de niveau des sites, qu'il faut confirmer sur le terrain plutôt que contester. Pour prévoir le mois suivant, la règle la plus simple, la consommation par jour du dernier mois, fait aussi bien que les modèles de lissage exponentiel et ARIMA sur les sites ordinaires, et nous avons pu expliquer pourquoi ; seul `r season_site`, dont la saison est marquée, demande un modèle saisonnier.
 
-Au-delà des chiffres, l'étude laisse trois listes de factures à vérifier (en annexe) et une méthode reproductible, qui peut être relancée chaque mois avec les nouvelles factures. Nous recommandons :
+Au-delà des chiffres, l'étude laisse trois listes de factures à vérifier, disponibles en entier sur demande, et une méthode reproductible, qui peut être relancée chaque mois avec les nouvelles factures. Nous recommandons :
 
 - de faire vérifier les erreurs probables par le service facturation, en commençant par les plus gros écarts, et de faire confirmer les changements de niveau par les responsables des sites : leurs retours donneraient un vrai taux d'erreur et permettraient d'ajuster les seuils ;
 - d'obtenir les tarifs de chaque site, pour chiffrer les écarts en euros ;
