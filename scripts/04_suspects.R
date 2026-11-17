@@ -21,12 +21,26 @@ big <- unique(pb$site[pb$group != "common"])  # big sites keep their own month e
 
 # ---- Typology ----------------------------------------------------------------
 flagged <- rank_flagged(classify_bills(pb, panel$breaks, periods, big, config))
+# Round trips (rule added after review, outside the step 7 calibration).
+trips <- find_round_trips(panel$breaks[!panel$breaks$site %in% big, ],
+                          config$plateau_min_months, config$level_shift_min)
+flagged <- apply_round_trips(flagged, pb, trips, config)
+# Lists of the report: probable billing errors, changes of the site to
+# confirm (a shared break stays here: the per-month test is not corrected for
+# the number of months tested), indeterminate; ramps are shown, not listed.
+list_of <- c(irregular_period = "error", point = "error", implausible = "error",
+             temporary = "error", compensated_pair = "error", round_trip = "error",
+             lasting_change = "change", network_change = "change",
+             indeterminate = "indeterminate", transition = "none")
+flagged$list <- unname(list_of[flagged$type])
+stopifnot(!anyNA(flagged$list))
 small <- flagged[!flagged$big, ]
 big_tab <- flagged[flagged$big, ]
 
 type_labels <- c(irregular_period = "Période irrégulière", point = "Écart ponctuel",
                  implausible = "Valeur implausible", temporary = "Écart temporaire",
-                 compensated_pair = "Paire compensée", lasting_change = "Changement durable",
+                 compensated_pair = "Paire compensée", round_trip = "Aller-retour de niveau",
+                 lasting_change = "Changement durable",
                  indeterminate = "Indéterminé", transition = "Transition",
                  network_change = "Probable changement réseau")
 conf_labels <- c(high = "élevée", medium = "moyenne", low = "faible")
@@ -65,8 +79,11 @@ pairs <- do.call(rbind, lapply(split(pr, pr$episode), function(e) {
 p89 <- pb[pb$site == "0089KO" & pb$month >= as.Date("2019-06-01") &
             pb$month <= as.Date("2019-08-01"), ]
 level_after <- pb$level[pb$site == "0089KO" & pb$month == as.Date("2019-09-01")]
+# expected_after: the new level from June (the level that validates the pair);
+# expected_own: each bill at its own plateau (old level until July).
 pair_0089 <- c(billed = sum(p89$kwh),
-               expected_after = sum(exp(level_after + p89$effect) * p89$month_days))
+               expected_after = sum(exp(level_after + p89$effect) * p89$month_days),
+               expected_own = sum(p89$expected_kwh))
 pair_0089["ratio"] <- pair_0089[["billed"]] / pair_0089[["expected_after"]]
 
 case_sites <- c("0089KO", "1067KO", "1088KO", "1978KO", "1986KO", "0254BB", "1240BR", "1911BB")
@@ -94,6 +111,26 @@ facts <- list(
   big_edge          = big_tab[c("site", "month", "edge", "confidence")]
 )
 
+# The three lists of the report, ordinary sites. The gaps of the change list
+# are taken at the old level on the first month only: counts, not kWh.
+lists <- do.call(rbind, lapply(c("error", "change", "indeterminate"), function(l) {
+  x <- small[small$list == l, ]
+  data.frame(list = l, rows = nrow(x), bills = nrow(unique(x[c("site", "month")])),
+             sites = length(unique(x$site)),
+             over_kwh = sum(x$gap_kwh[x$gap_kwh > 0]), under_kwh = sum(x$gap_kwh[x$gap_kwh < 0]))
+}))
+listed <- small[small$list != "none", ]
+list_facts <- list(
+  lists = lists,
+  types = table(factor(listed$type, levels = names(type_labels))),
+  n_bills = nrow(unique(listed[c("site", "month")])),
+  n_sites = length(unique(listed$site)),
+  n_trips = nrow(trips),
+  trip_sites = trips$site,
+  kwh_ordinary = sum(pb$kwh[!pb$site %in% big]),
+  n_bills_ordinary = sum(!pb$site %in% big)
+)
+
 # ---- Figure ------------------------------------------------------------------
 counts <- as.data.frame(by_type_conf, responseName = "n")
 counts$type <- factor(type_labels[as.character(counts$type)], levels = rev(type_labels))
@@ -105,17 +142,15 @@ p <- ggplot(counts, aes(n, type, fill = confidence)) +
        caption = "Sites ordinaires. Transition et probable changement réseau : affichés, non suspects.") +
   theme(legend.position = "bottom")
 save_fig(p, "suspects_by_type")
-# Conclusion (K = 6 from step 7): on the 90 ordinary sites, 168 rows (bills
-# and breaks) on 71 sites; 112 are suspect (109 distinct bills) on 59 sites,
-# 80 of them in high confidence: 62 lasting changes, 20 point gaps, 14
-# indeterminate, 10 temporary bills, 4 bills in 2 compensated pairs, 2
-# irregular periods, no implausible value. The other 56 rows are shown but
-# not suspect: 27 ramp bills (transitions) and 29 breaks in the 5
-# month-directions that beat chance (April 2019 down; August, October and
-# November 2019 and April 2020 up). The big sites have no suspect row. The
-# suspect bills sum to +10,705 kWh above and -7,276 kWh below the expected
-# value; the lasting changes add +310,804 and -292,325 kWh from their start,
-# more likely equipment changes than billing errors.
+# Conclusion (K = 6 from step 7): on the 90 ordinary sites, 3 round trips
+# (0357KO 2020, 0690BR and 2106BB 2021; 0254BB and 1037BB alternate up and
+# down and stay ambiguous). Lists: 44 probable errors on 26 sites (19 point
+# gaps, 10 temporary bills, 9 round-trip bills, 4 bills in 2 compensated
+# pairs, 2 irregular periods, no implausible value), +9,075 and -6,307 kWh
+# against the expected value; 85 changes to confirm on 57 sites (56 lasting,
+# 29 in the 5 month-directions that beat chance, a test not corrected for the
+# 60 month-directions tested); 14 indeterminate rows (13 bills) on 8 sites.
+# 27 ramp bills are shown, not listed. The big sites have no listed row.
 
 # ---- Saved tables and numbers for the report ---------------------------------
 write.csv(small, file.path(config$tables_dir, "suspects.csv"), row.names = FALSE)
@@ -146,7 +181,9 @@ results <- list(
   shared_lambda     = unique(shared_months[c("direction", "lambda")]),
   shared_months     = shared_months,  # month, direction, n, lambda, p_value, shared
   pairs             = pairs,
-  facts             = facts
+  facts             = facts,
+  trips             = trips,
+  list_facts        = list_facts
 )
 saveRDS(results, file.path(config$results_dir, "suspects.rds"))
 cat("Suspects written to", config$output_dir, "\n")

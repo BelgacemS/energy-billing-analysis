@@ -24,11 +24,27 @@ brk_month <- sites$shift_month[sites$site == typ[["break"]]]
 lvl_q <- quantile(small$median_kwh, c(0.1, 0.9))
 ```
 
-Comme le recommande le cours, nous avons d'abord regardé les séries avant d'en chercher la tendance, la saison et les ruptures. Six séries nous servent d'exemples : le total des sites ordinaires, les deux gros sites, et trois sites choisis par une règle fixée à l'avance (le plus régulier, `r typ[["stable"]]` ; celui qui a le plus grand changement de niveau, `r typ[["break"]]` ; celui qui a la plus forte valeur isolée, `r typ[["spike"]]`).
+Nous avons d'abord regardé les séries avant d'en chercher la tendance, la saison et les ruptures. Six séries nous servent d'exemples : le total des sites ordinaires, les deux gros sites, et trois sites choisis par une règle fixée à l'avance (le plus régulier, `r typ[["stable"]]` ; celui qui a le plus grand changement de niveau, `r typ[["break"]]` ; celui qui a la plus forte valeur isolée, `r typ[["spike"]]`).
 
 ## Niveaux, tendance et ruptures
 
-Les sites ordinaires facturent entre `r num(desc$small_kwh_range[1])` et `r num(desc$small_kwh_range[2])` kWh par mois, la plupart (80 %) entre `r num(round(lvl_q[1], -2))` et `r num(round(lvl_q[2], -2))`.
+Les sites ordinaires facturent entre `r num(desc$small_kwh_range[1])` et `r num(desc$small_kwh_range[2])` kWh par mois, huit sur dix entre `r num(round(lvl_q[1], -2))` et `r num(round(lvl_q[2], -2))` (@tbl-summary). Les trois suffixes se ressemblent : niveaux et bruit sont du même ordre, et ni l'évolution (test de Kruskal-Wallis, p = `r num(desc$suffix_tests[["growth_kruskal_p"]], 2)`) ni la part de sites qui changent de niveau (test exact de Fisher, p = `r num(desc$suffix_tests[["level_change_fisher_p"]], 2)`) ne diffèrent nettement d'un suffixe à l'autre.
+
+```{r}
+#| label: tbl-summary
+#| tbl-colwidths: [14, 9, 13, 12, 13, 14, 13, 12]
+#| tbl-cap: "Sites ordinaires par suffixe : consommation médiane de chaque site (quartiles entre sites), évolution de 2019 à 2021, part des sites qui changent de niveau (ruptures) et bruit d'un mois à l'autre (médianes entre sites)."
+summ <- function(x, label) {
+  q <- quantile(x$median_kwh, c(0.25, 0.5, 0.75))
+  data.frame(Suffixe = label, Sites = nrow(x), `1er quart.` = num(q[1]), `Médiane` = num(q[2]),
+             `3e quart.` = num(q[3]), `Évolution` = pct(median(x$growth), 1, signed = TRUE),
+             Ruptures = pct(mean(x$level_change)),
+             Bruit = pct(median(x$volatility) / sqrt(2), 1), check.names = FALSE)
+}
+tab <- rbind(do.call(rbind, lapply(sort(unique(small$suffix)), function(k) summ(small[small$suffix == k, ], k))),
+             summ(small, "Ensemble"))
+knitr::kable(tab, align = "lrrrrrrr", row.names = FALSE)
+```
 
 ```{r}
 #| label: fig-series
@@ -37,7 +53,7 @@ Les sites ordinaires facturent entre `r num(desc$small_kwh_range[1])` et `r num(
 fig("course_series")
 ```
 
-La tendance n'est pas le phénomène principal (@fig-series). Le total des sites ordinaires progresse de `r pct(cv$growth_total, 1)` sur la période, mais les sites évoluent très différemment : hors `r typ[["break"]]`, de `r pct(g_min$growth, signed = TRUE)` pour `r g_min$site` à `r pct(g_max$growth, signed = TRUE)` pour `r g_max$site`. Ces écarts viennent de sauts, pas de pentes régulières. `r typ[["break"]]`, lui, perd l'essentiel de sa consommation en `r month_fr(brk_month)`. La carte de la @fig-heatmap généralise ce constat à tous les sites : la plupart des lignes changent de couleur par paliers, souvent le même mois pour plusieurs sites. Au total, `r desc$n_level_change` des `r n_small` sites ordinaires (`r pct(desc$share_level_change)`) changent de niveau de plus de `r pct(config$level_shift_min)` au moins une fois. Ces changements se concentrent sur quelques mois, ce qui évoque des opérations menées sur une partie du réseau.
+La tendance n'est pas le phénomène principal (@fig-series). Le total des sites ordinaires progresse de `r pct(cv$growth_total, 1)` sur la période, mais les sites évoluent très différemment : hors `r typ[["break"]]`, de `r pct(g_min$growth, signed = TRUE)` pour `r g_min$site` à `r pct(g_max$growth, signed = TRUE)` pour `r g_max$site`. Ces écarts viennent de sauts, pas de pentes régulières. `r typ[["break"]]`, lui, perd l'essentiel de sa consommation en `r month_fr(brk_month)`. La carte de la @fig-heatmap généralise ce constat à tous les sites : la plupart des lignes changent de couleur par paliers, souvent le même mois pour plusieurs sites. Au total, `r desc$n_level_change` des `r n_small` sites ordinaires (`r pct(desc$share_level_change)`) changent de niveau de plus de `r pct(config$level_shift_min)` au moins une fois. Certains mois en regroupent plusieurs ; la partie 3 examine si c'est plus que le hasard.
 
 ```{r}
 #| label: fig-heatmap
@@ -54,7 +70,7 @@ fig("heatmap")
 fig("month_profile")
 ```
 
-En kWh facturés, le profil mensuel suit surtout la longueur des mois (@fig-profile). Ramené au jour, il est presque plat : de `r pct(min(winter), 1, signed = TRUE)` à `r pct(max(winter), 1, signed = TRUE)` en hiver, `r pct(max(summer), 1, signed = TRUE)` au plus fort de l'été. La saison existe donc, mais elle est faible devant les ruptures. La décomposition STL du cours le confirme : la force de la saison (part de la variation hors tendance expliquée par la saison, entre 0 et 1) vaut `r num(row_of("total")$season_strength, 2)` pour le total, mais site par site elle est plus faible, et `r cv$n_season_weak` des `r n_small` sites restent sous le seuil de `r num(config$nsdiffs_seas_threshold, 2)` utilisé par `nsdiffs`. Elle est la même pour les trois suffixes, et l'effet propre de chaque site se reproduit mal d'une année à l'autre. Nous estimons donc un effet du mois commun à tous les sites ordinaires, plus sûr qu'un effet propre à chaque site (Withycombe, 1989). Le gros site 0698BR fait exception, avec une saison nette chaque année (creux en hiver, pic en juillet et août) : les deux gros sites gardent leur propre saison.
+En kWh facturés, le profil mensuel suit surtout la longueur des mois (@fig-profile). Ramené au jour, il est presque plat : de `r pct(min(winter), 1, signed = TRUE)` à `r pct(max(winter), 1, signed = TRUE)` en hiver, `r pct(max(summer), 1, signed = TRUE)` au plus fort de l'été. La saison existe donc, mais elle est faible devant les ruptures. Une décomposition STL le confirme : la force de la saison (part de la variation hors tendance expliquée par la saison, entre 0 et 1) vaut `r num(row_of("total")$season_strength, 2)` pour le total, mais site par site elle est plus faible, et `r cv$n_season_weak` des `r n_small` sites restent sous le seuil de `r num(config$nsdiffs_seas_threshold, 2)` au-delà duquel le test usuel propose une différence saisonnière. Sur moins de trois années, cette mesure est d'ailleurs peu précise. Elle est la même pour les trois suffixes, et l'effet propre de chaque site se reproduit mal d'une année à l'autre. Nous estimons donc un effet du mois commun à tous les sites ordinaires, plus sûr qu'un effet propre à chaque site (Withycombe, 1989). Le gros site 0698BR fait exception, avec une saison nette chaque année (creux en hiver, pic en juillet et août) : les deux gros sites gardent leur propre saison.
 
 ## Stationnarité et autocorrélation
 
@@ -64,18 +80,19 @@ En kWh facturés, le profil mensuel suit surtout la longueur des mois (@fig-prof
 fig("tsdisplay_total")
 ```
 
-L'autocorrélation du total décroît lentement (`r num(cv$acf_total["lag1"], 2)` au premier retard) et l'autocorrélation partielle n'a qu'un pic, au premier retard (@fig-acf-total) : le niveau dérive comme une marche aléatoire. Après une différence, il ne reste plus d'autocorrélation significative, pas même au retard 12, et l'autocorrélation au premier retard (`r dec(cv$acf_total["lag1_after_diff"])`) est loin du signe de sur-différenciation vu en cours (proche de −0,5 ou moins). Les tests du cours vont dans le même sens (@tbl-tests) : toutes les séries demandent une différence simple, et une différence saisonnière n'est clairement justifiée que pour 0698BR.
+L'autocorrélation du total décroît lentement (`r num(cv$acf_total["lag1"], 2)` au premier retard) et l'autocorrélation partielle n'a qu'un pic, au premier retard (@fig-acf-total) : le niveau dérive comme une marche aléatoire. Après une différence, il ne reste plus d'autocorrélation significative, pas même au retard 12, et l'autocorrélation au premier retard (`r dec(cv$acf_total["lag1_after_diff"])`) est loin du signe de sur-différenciation (proche de −0,5 ou moins). Les tests de différenciation vont dans le même sens (@tbl-tests) : toutes les séries demandent une différence simple, et sur les `r desc$n_months` mois, une différence saisonnière n'est clairement justifiée que pour 0698BR.
 
 ```{r}
 #| label: tbl-tests
 #| tbl-cap: "Ordres de différenciation suggérés pour les six séries (logarithme des kWh par jour)."
 knitr::kable(
-  data.frame(`Série` = tests$label, `d (ndiffs)` = tests$ndiffs,
-             `D, test seas` = tests$nsdiffs_seas, `D, test OCSB` = tests$nsdiffs_ocsb,
+  data.frame(`Série` = tests$label, `Différences simples (KPSS)` = tests$ndiffs,
+             `Différence saisonnière (force de saison)` = tests$nsdiffs_seas,
+             `Différence saisonnière (OCSB)` = tests$nsdiffs_ocsb,
              `Force de la saison` = num(tests$season_strength, 2), check.names = FALSE),
   align = "lrrrr")
 ```
 
 ## Ce que nous retenons
 
-Quatre constats orientent la suite. Les sites changent souvent de niveau par paliers : avant de juger une facture, il faut distinguer une rupture durable d'un pic isolé. La saison est petite et commune aux sites ordinaires : elle se traite par un effet du mois commun. Le niveau dérive comme une marche aléatoire : la prévision naïve sera difficile à battre. Enfin, les ruptures risquent de tromper les modèles ARIMA ajustés automatiquement.
+Quatre constats orientent la suite. Les sites changent souvent de niveau par paliers : avant de juger une facture, il faut distinguer une rupture durable d'un pic isolé. La saison est petite et commune aux sites ordinaires : elle se traite par un effet du mois commun. Le niveau dérive à peu près comme une marche aléatoire : la prévision naïve sera difficile à battre. Enfin, les ruptures risquent de tromper les modèles ARIMA ajustés automatiquement.

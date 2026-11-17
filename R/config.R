@@ -120,6 +120,13 @@ config <- list(
   edge_months          = 3,   # first and last months, where a plateau is less reliable
   merge_gap_months     = 1,
   temporary_max_months = 4,
+  # Level round trip, rule added after the review of the report (applied by
+  # scripts/04_suspects.R only, the step 7 calibration does not use it): two
+  # breaks above level_shift_min of opposite sign at most plateau_min_months
+  # apart, the second bringing the site back within level_shift_min of its
+  # level before the first. A gap of plateau_min_months months is read by the
+  # segmentation as two plateaus; its bills become one temporary episode
+  # (round_trip), judged at the level before the first break. No new threshold.
   # Confidence: high for an irregular period (deterministic check); otherwise
   # high when |z| >= high_confidence_z outside the edge months and outside a
   # shared break, low in the edge months, medium otherwise. The

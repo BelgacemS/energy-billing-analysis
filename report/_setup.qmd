@@ -17,6 +17,7 @@ bl <- readRDS(file.path(config$results_dir, "backtest_baselines.rds"))
 mo <- readRDS(file.path(config$results_dir, "models.rds"))
 sel <- readRDS(file.path(config$results_dir, "select.rds"))
 fc <- readRDS(file.path(config$results_dir, "forecast.rds"))
+bj <- readRDS(file.path(config$results_dir, "box_jenkins.rds"))
 n_small <- desc$n_sites - length(desc$big_sites)
 read_table <- function(name) read.csv(file.path(config$tables_dir, paste0(name, ".csv")))
 
@@ -41,4 +42,22 @@ fig <- function(name) {
                       overwrite = TRUE))
   knitr::include_graphics(file.path("_figures", file), error = FALSE)
 }
+
+# Lists of the Q1 (scripts/04_suspects.R).
+lf <- sus$list_facts
+lst <- function(l, col) lf$lists[lf$lists$list == l, col]
+err_kwh_share <- (lst("error", "over_kwh") - lst("error", "under_kwh")) / lf$kwh_ordinary
+fa_expected <- cal$chosen$fa * lf$n_bills_ordinary  # false alerts at the simulated rate
+
+# Big sites: per-site MASE (validation: models.rds, test: forecast.rds), kWh
+# errors on the test months and the per-day naive for December 2021.
+season_site <- config$arima_season_sites
+other_big <- setdiff(fc$big, season_site)
+site_mase <- function(data, site, method) mean(data$scaled_error[data$site == site & data$method == method])
+big_test <- fc$test[fc$test$site %in% fc$big, ]
+big_kwh_err <- tapply(abs(big_test$error), big_test$method, sum)  # both sites, 6 months
+last_bills <- pan$panel[pan$panel$month == max(pan$panel$month), ]
+naive_dec <- function(s) last_bills$kwh[last_bills$site == s] / last_bills$month_days[last_bills$site == s] * 31
+dec_of <- function(s) fc$december$forecast[fc$december$site == s]
+stopifnot(abs(dec_of(other_big) / naive_dec(other_big) - 1) < 1e-6)  # its ARIMA is the naive
 ```
